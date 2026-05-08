@@ -51,7 +51,7 @@ test.describe('Registration Scenarios', () => {
 
     test('TC-REG-03: Verify error when registering with an existing email', async ({ loginPage, registrationPage }) => {
         await loginPage.navigate();
-        await loginPage.goToSignUp();
+        await loginPage.goToSignUp();//added cmnt
         await registrationPage.emailInput.fill('patil.tanmay9900@gmail.com');
         await registrationPage.nextButton.click({ force: true });
         await expect(registrationPage.page.getByText(/An account with this email/i)).toBeVisible();
@@ -151,7 +151,7 @@ test.describe('Registration Scenarios', () => {
 
         await registrationPage.page.goto(link);
         await expect(registrationPage.page.getByRole('heading', { name: 'Sign up to Qzero' })).toBeVisible({ timeout: 20000 });
-        
+
         // After verifying but not filling profile, login should redirect to profile page
         await loginPage.navigate();
         await loginPage.login(email, password);
