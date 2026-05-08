@@ -21,8 +21,6 @@ async function getVerificationLink(page: any, email: string, password: string) {
     const confirmPasswordInput = page.getByRole('textbox', { name: 'Re-enter Password' });
     await confirmPasswordInput.fill(password);
     await confirmPasswordInput.blur();
-
-    // Extra interaction to ensure frontend validation is triggered
     await page.getByRole('heading', { name: 'Create Account' }).click({ force: true });
     await page.waitForTimeout(1000);
 
@@ -32,7 +30,6 @@ async function getVerificationLink(page: any, email: string, password: string) {
 
     const nextButton = page.getByRole('button', { name: 'Next' });
 
-    // If button is still disabled, try one more Tab/Blur cycle
     if (await nextButton.isDisabled()) {
         await confirmPasswordInput.focus();
         await confirmPasswordInput.press('Tab');
@@ -227,7 +224,7 @@ test.describe('Registration Scenarios', () => {
         await page.goto(AppConfig.paths.signIn);
         await page.getByRole('link', { name: 'Sign Up' }).click();
         await page.waitForURL(/.*signup/);
-        await page.pause();
+        // await page.pause();
         await page.getByRole('textbox', { name: 'Enter Email ID' }).fill(email);
         await page.getByRole('textbox', { name: 'Enter Email ID' }).press('Tab');
         await page.getByRole('button', { name: 'Next' }).click({ force: true });
@@ -291,7 +288,9 @@ test.describe('Registration Scenarios', () => {
 
         await expect(signInButton).toBeEnabled({ timeout: 10000 });
         await signInButton.click({ force: true });
-        await expect(page.getByText(/Profile is not completed|Complete your profile/i)).toBeVisible({ timeout: 15000 });
+        await expect(page.getByRole('heading', { name: 'Sign up to Qzero' })).toBeVisible({ timeout: 20000 });
+        await expect(page.getByRole('textbox', { name: 'Enter Name' })).toBeVisible();
+        await expect(page.getByRole('textbox', { name: 'Enter Mobile Number' })).toBeVisible();
     });
 
 });
