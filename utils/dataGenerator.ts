@@ -61,4 +61,8 @@ export class DataGenerator {
         email: 'larryrathod2@gmail.com',
         password: 'Ganesha@5050'
     };
+
+    public static readonly ASSETS = {
+        PROFILE_PIC: 'tests/assets/man.png'
+    };
 }
