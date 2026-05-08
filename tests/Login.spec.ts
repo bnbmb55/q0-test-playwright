@@ -1,11 +1,13 @@
 import { test, expect } from '@playwright/test';
+import { DataGenerator } from '../utils/dataGenerator';
+import { AppConfig } from '../utils/config';
 
 test.describe('Login Functionality', () => {
   test.describe.configure({ mode: 'serial' });
   test.setTimeout(60000);
 
   test.beforeEach(async ({ page }) => {
-    await page.goto('https://ui-uat.q0.dev/signin');
+    await page.goto(AppConfig.paths.signIn);
   });
 
   test('TC-LOGIN-01: Verify successful login with valid credentials & session persistence after page refresh', async ({ page }) => {
@@ -70,6 +72,36 @@ test.describe('Login Functionality', () => {
     await expect(page.getByRole('link', { name: 'Sign Up' })).toBeVisible({ timeout: 15000 });
     await expect(page.getByRole('button', { name: /Google/i })).toBeVisible({ timeout: 15000 });
     await expect(page.getByRole('button', { name: /GitHub/i })).toBeVisible({ timeout: 15000 });
+  });
+
+  test('TC-LOGIN-08: Verify error when trying to login normally with Google account credentials', async ({ page }) => {
+    const googleUser = DataGenerator.GOOGLE_USER;
+
+    await page.getByRole('textbox', { name: 'Enter Email ID' }).fill(googleUser.email);
+    await page.getByRole('textbox', { name: 'Enter Email ID' }).press('Tab');
+    await page.getByRole('textbox', { name: 'Enter Password' }).fill(googleUser.password);
+    await page.getByRole('textbox', { name: 'Enter Password' }).press('Tab');
+
+    const signInButton = page.getByRole('button', { name: 'Sign In', exact: true });
+    await expect(signInButton).toBeEnabled();
+    await signInButton.click({ force: true });
+
+    await expect(page.getByText(/please sign in with google|sign in using google/i)).toBeVisible({ timeout: 15000 });
+  });
+
+  test('TC-LOGIN-09: Verify error when trying to login normally with GitHub account credentials', async ({ page }) => {
+    const githubUser = DataGenerator.GITHUB_USER;
+
+    await page.getByRole('textbox', { name: 'Enter Email ID' }).fill(githubUser.email);
+    await page.getByRole('textbox', { name: 'Enter Email ID' }).press('Tab');
+    await page.getByRole('textbox', { name: 'Enter Password' }).fill(githubUser.password);
+    await page.getByRole('textbox', { name: 'Enter Password' }).press('Tab');
+
+    const signInButton = page.getByRole('button', { name: 'Sign In', exact: true });
+    await expect(signInButton).toBeEnabled();
+    await signInButton.click({ force: true });
+
+    await expect(page.getByText(/please sign in with github|sign in using github/i)).toBeVisible({ timeout: 15000 });
   });
 
 });

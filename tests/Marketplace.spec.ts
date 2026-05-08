@@ -1,11 +1,12 @@
 import { test, expect } from '@playwright/test';
+import { AppConfig } from '../utils/config';
 
 test.describe('Marketplace Functionality', () => {
   test.describe.configure({ mode: 'serial' });
   test.setTimeout(90000);
 
   test.beforeEach(async ({ page }) => {
-    await page.goto('https://ui-uat.q0.dev/signin');
+    await page.goto(AppConfig.paths.signIn);
     await page.getByRole('textbox', { name: 'Enter Email ID' }).fill('patil.tanmay9900@gmail.com');
     await page.getByRole('textbox', { name: 'Enter Password' }).fill('Ganesha@5050');
     await page.getByRole('textbox', { name: 'Enter Password' }).press('Tab');

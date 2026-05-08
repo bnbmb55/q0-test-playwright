@@ -51,4 +51,14 @@ export class DataGenerator {
         const suffix = suffixes[Math.floor(Math.random() * suffixes.length)];
         return `${prefix} ${suffix} ${Math.floor(Math.random() * 1000)}`;
     }
+
+    public static readonly GOOGLE_USER = {
+        email: 'vivekyadavuwi@gmail.com',
+        password: 'Ganesha@5050'
+    };
+
+    public static readonly GITHUB_USER = {
+        email: 'larryrathod2@gmail.com',
+        password: 'Ganesha@5050'
+    };
 }

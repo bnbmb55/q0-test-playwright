@@ -1,9 +1,10 @@
 import { test, expect } from '@playwright/test';
 import { DataGenerator } from '../utils/dataGenerator';
 import { EncryptionAndDecryption } from '../utils/encryption';
+import { AppConfig } from '../utils/config';
 
 async function getVerificationLink(page: any, email: string, password: string) {
-    await page.goto('https://ui-uat.q0.dev/signin');
+    await page.goto(AppConfig.paths.signIn);
     await page.getByRole('link', { name: 'Sign Up' }).click();
     await page.waitForURL(/.*signup/);
 
@@ -20,7 +21,7 @@ async function getVerificationLink(page: any, email: string, password: string) {
     const confirmPasswordInput = page.getByRole('textbox', { name: 'Re-enter Password' });
     await confirmPasswordInput.fill(password);
     await confirmPasswordInput.blur();
-    
+
     // Extra interaction to ensure frontend validation is triggered
     await page.getByRole('heading', { name: 'Create Account' }).click({ force: true });
     await page.waitForTimeout(1000);
@@ -30,7 +31,7 @@ async function getVerificationLink(page: any, email: string, password: string) {
     );
 
     const nextButton = page.getByRole('button', { name: 'Next' });
-    
+
     // If button is still disabled, try one more Tab/Blur cycle
     if (await nextButton.isDisabled()) {
         await confirmPasswordInput.focus();
@@ -130,7 +131,7 @@ test.describe('Registration Scenarios', () => {
     });
 
     test('TC-REG-03: Verify error when registering with an existing email', async ({ page }) => {
-        await page.goto('https://ui-uat.q0.dev/signin');
+        await page.goto(AppConfig.paths.signIn);
         await page.getByRole('link', { name: 'Sign Up' }).click({ force: true });
         await page.waitForURL(/.*signup/);
 
@@ -142,7 +143,7 @@ test.describe('Registration Scenarios', () => {
 
     test('TC-REG-04: Verify password mismatch validation', async ({ page }) => {
         const email = DataGenerator.generateRandomEmail();
-        await page.goto('https://ui-uat.q0.dev/signin');
+        await page.goto(AppConfig.paths.signIn);
         await page.getByRole('link', { name: 'Sign Up' }).click({ force: true });
         await page.waitForURL(/.*signup/);
 
@@ -159,7 +160,7 @@ test.describe('Registration Scenarios', () => {
 
     test('TC-REG-05: Verify weak password validation', async ({ page }) => {
         const email = DataGenerator.generateRandomEmail();
-        await page.goto('https://ui-uat.q0.dev/signin');
+        await page.goto(AppConfig.paths.signIn);
         await page.getByRole('link', { name: 'Sign Up' }).click({ force: true });
         await page.waitForURL(/.*signup/);
 
@@ -218,6 +219,79 @@ test.describe('Registration Scenarios', () => {
 
         await page.goto(link);
         await expect(page.getByText('Verification link invalid or expiredPlease request a new verification email to')).toBeVisible();
+    });
+
+    test('TC-REG-09: Verify registration flow with multi-step validation (Unverified -> Verified -> Incomplete Profile)', async ({ page }) => {
+        const email = DataGenerator.generateRandomEmail();
+        const password = DataGenerator.generateComplexPassword();
+        await page.goto(AppConfig.paths.signIn);
+        await page.getByRole('link', { name: 'Sign Up' }).click();
+        await page.waitForURL(/.*signup/);
+        await page.pause();
+        await page.getByRole('textbox', { name: 'Enter Email ID' }).fill(email);
+        await page.getByRole('textbox', { name: 'Enter Email ID' }).press('Tab');
+        await page.getByRole('button', { name: 'Next' }).click({ force: true });
+
+        await expect(page.getByRole('heading', { name: 'Create Account' })).toBeVisible({ timeout: 10000 });
+
+
+        const passwordInputStep1 = page.getByRole('textbox', { name: 'Enter Password', exact: true });
+        await passwordInputStep1.fill(password);
+        await passwordInputStep1.blur();
+
+        const confirmPasswordInputStep1 = page.getByRole('textbox', { name: 'Re-enter Password' });
+        await confirmPasswordInputStep1.fill(password);
+        await confirmPasswordInputStep1.blur();
+        await page.getByRole('heading', { name: 'Create Account' }).click({ force: true });
+        await page.waitForTimeout(1000);
+
+        const signupResponsePromise = page.waitForResponse(response =>
+            response.url().includes('/Infer/api/logins/signup') && response.status() === 200
+        );
+
+        const nextButton = page.getByRole('button', { name: 'Next' });
+        if (await nextButton.isDisabled()) {
+            await confirmPasswordInputStep1.focus();
+            await confirmPasswordInputStep1.press('Tab');
+            await page.waitForTimeout(500);
+        }
+
+        await expect(nextButton).toBeEnabled({ timeout: 30000 });
+        await nextButton.click({ force: true });
+
+        const [response] = await Promise.all([
+            signupResponsePromise,
+            expect(page.getByRole('heading', { name: 'Verification Email Sent' })).toBeVisible({ timeout: 20000 })
+        ]);
+        const responseBody = await response.json();
+        const encryptedData = responseBody.details || responseBody.data;
+        let decryptedData = EncryptionAndDecryption.decryption(encryptedData);
+        if (decryptedData === 400) {
+            decryptedData = EncryptionAndDecryption.decryptionIds(encryptedData);
+        }
+        const verificationLink = decryptedData.verification_url || decryptedData.verificationLink;
+        await page.goto(AppConfig.paths.signIn);
+        await page.getByRole('textbox', { name: 'Enter Email ID' }).fill(email);
+        await page.getByRole('textbox', { name: 'Enter Email ID' }).press('Tab');
+        await page.getByRole('textbox', { name: 'Enter Password' }).fill(password);
+        await page.getByRole('textbox', { name: 'Enter Password' }).press('Tab');
+
+        const signInButton = page.getByRole('button', { name: 'Sign In', exact: true });
+        await expect(signInButton).toBeEnabled({ timeout: 10000 });
+        await signInButton.click({ force: true });
+        await expect(page.locator('form').getByText('Invalid email or password')).toBeVisible({ timeout: 15000 });
+
+        await page.goto(verificationLink);
+        await expect(page.getByRole('heading', { name: 'Sign up to Qzero' })).toBeVisible({ timeout: 20000 });
+        await page.goto(AppConfig.paths.signIn);
+        await page.getByRole('textbox', { name: 'Enter Email ID' }).fill(email);
+        await page.getByRole('textbox', { name: 'Enter Email ID' }).press('Tab');
+        await page.getByRole('textbox', { name: 'Enter Password' }).fill(password);
+        await page.getByRole('textbox', { name: 'Enter Password' }).press('Tab');
+
+        await expect(signInButton).toBeEnabled({ timeout: 10000 });
+        await signInButton.click({ force: true });
+        await expect(page.getByText(/Profile is not completed|Complete your profile/i)).toBeVisible({ timeout: 15000 });
     });
 
 });
