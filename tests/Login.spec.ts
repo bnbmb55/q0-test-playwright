@@ -51,14 +51,18 @@ test.describe('Login Functionality', () => {
         await expect(loginPage.page.getByText(/please sign in with google|sign in using google/i)).toBeVisible({ timeout: 15000 });
     });
 
-    test('TC-LOGIN-08: Verify sign-in button disabled for incomplete credentials', async ({ loginPage }) => {
-        await loginPage.emailInput.fill('test@example.com');
-        await loginPage.emailInput.fill('');
-        await loginPage.emailInput.press('Tab');
-        await expect(loginPage.signInButton).toBeDisabled();
-        
+    test('TC-LOGIN-08: Verify error messages for incomplete credentials', async ({ loginPage }) => {
+        // Case 1: Empty email
+        await loginPage.emailInput.clear();
         await loginPage.passwordInput.fill('Password123');
-        await expect(loginPage.signInButton).toBeDisabled();
+        await loginPage.signInButton.click({ force: true });
+        await expect(loginPage.page.getByText(/Email is required|Please enter a Correct email/i)).toBeVisible();
+        
+        // Case 2: Empty password
+        await loginPage.emailInput.fill('test@example.com');
+        await loginPage.passwordInput.clear();
+        await loginPage.signInButton.click({ force: true });
+        await expect(loginPage.page.getByText(/Password is required|Password cannot be empty/i)).toBeVisible();
     });
 
     test('TC-LOGIN-09: Verify error when trying to login normally with GitHub account', async ({ loginPage }) => {

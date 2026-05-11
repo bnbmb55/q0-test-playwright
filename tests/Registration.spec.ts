@@ -144,7 +144,6 @@ test.describe('Registration Scenarios', () => {
         await registrationPage.step1FillPasswords(password);
         const link = await registrationPage.step1SubmitAndGetLink();
 
-        // Login before verifying - should fail or redirect
         await loginPage.navigate();
         await loginPage.login(email, password);
         await expect(loginPage.page.locator('form').getByText('Invalid email or password')).toBeVisible({ timeout: 15000 });
@@ -152,7 +151,6 @@ test.describe('Registration Scenarios', () => {
         await registrationPage.page.goto(link);
         await expect(registrationPage.page.getByRole('heading', { name: 'Sign up to Qzero' })).toBeVisible({ timeout: 20000 });
 
-        // After verifying but not filling profile, login should redirect to profile page
         await loginPage.navigate();
         await loginPage.login(email, password);
         await expect(registrationPage.page.getByRole('heading', { name: 'Sign up to Qzero' })).toBeVisible({ timeout: 20000 });

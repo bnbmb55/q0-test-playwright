@@ -45,15 +45,18 @@ export class RegistrationPage {
 
     async step1FillPasswords(password: string) {
         await this.passwordInput.fill(password);
-        await this.passwordInput.blur();
+        await this.passwordInput.press('Tab');
         await this.confirmPasswordInput.fill(password);
-        await this.confirmPasswordInput.blur();
+        await this.confirmPasswordInput.press('Tab');
         
-        // Stabilization logic seen in tests
+        // Stabilization: Click away and wait to trigger frontend validation
         await this.createAccountHeading.click({ force: true });
         await this.page.waitForTimeout(1000);
 
+        // If still disabled, try one more Tab cycle
         if (await this.nextButton.isDisabled()) {
+            await this.passwordInput.focus();
+            await this.passwordInput.press('Tab');
             await this.confirmPasswordInput.focus();
             await this.confirmPasswordInput.press('Tab');
             await this.page.waitForTimeout(1000);
