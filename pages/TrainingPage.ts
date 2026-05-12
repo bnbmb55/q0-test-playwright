@@ -64,7 +64,7 @@ export class TrainingPage {
         this.baseModelDropdown = page.getByRole('combobox').nth(2);
 
         // Step 3
-        this.trainingTypeDropdown = page.getByRole('combobox').filter({ hasText: /SFT|RLHF/i });
+        this.trainingTypeDropdown = page.getByRole('combobox').nth(3);
 
         // Step 4
         this.selectDatasetBtn = page.getByRole('button', { name: 'Select dataset' });
@@ -126,18 +126,39 @@ export class TrainingPage {
         await this.continueBtn.click();
     }
 
-    async selectTrainingConfiguration(type: string, distributionType?: 'DDP' | 'DeepSpeed') {
-        // Select Training Type (SFT/RLHF)
-        await this.trainingTypeDropdown.click();
-        await this.page.getByRole('option', { name: new RegExp(type, 'i') }).click();
+    async selectTrainingConfiguration(type: string, distributionType?: 'DDP' | 'DeepSpeed', modelName?: string) {
+        // Handle Whisper special case where DDP/DeepSpeed are in the main dropdown
+        // If type is 'Single GPU' or model is Whisper, it implies a combined UI
+        let targetType = type;
+        let isCombinedDropdown = false;
+        
+        if ((type === 'Single GPU' || modelName?.includes('Whisper')) && distributionType) {
+            targetType = distributionType;
+            isCombinedDropdown = true;
+        }
 
-        // Optional: Select Distribution Type (DDP/DeepSpeed)
-        if (distributionType) {
-            await this.page.getByRole('combobox').filter({ hasText: 'Select Distribution Type' }).click();
+        // Select Training Type (SFT/RLHF/DPO/Single GPU/etc.)
+        await this.trainingTypeDropdown.click();
+        
+        // Selection part - using exact text or label for robustness
+        const option = this.page.getByRole('option', { name: targetType }).or(this.page.getByText(targetType)).first();
+        await option.click();
+
+        // Optional: Select Distribution Type (DDP/DeepSpeed) - only if not already handled
+        if (distributionType && !isCombinedDropdown) {
+            // Wait for and click the Distribution Type combobox
+            const distCombobox = this.page.getByRole('combobox').filter({ hasText: /Select Distribution Type/i });
+            await distCombobox.click();
+
             if (distributionType === 'DDP') {
-                await this.page.getByRole('option', { name: 'DDP (Distributed Data' }).click();
+                await this.page.getByText('DDP (Distributed Data').click();
             } else if (distributionType === 'DeepSpeed') {
-                await this.page.getByRole('option', { name: 'DeepSpeed' }).click();
+                // Handle potential DDP default
+                const ddpSelected = this.page.getByRole('combobox').filter({ hasText: 'DDP (Distributed Data' });
+                if (await ddpSelected.isVisible()) {
+                    await ddpSelected.click();
+                }
+                await this.page.getByLabel('DeepSpeed').locator('div').filter({ hasText: 'DeepSpeed' }).click();
             }
         }
 

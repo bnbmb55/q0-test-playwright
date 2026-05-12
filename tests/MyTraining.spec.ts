@@ -1,66 +1,37 @@
 import { test, expect } from '../fixtures/base';
+import { trainingModels } from '../data/trainingData';
 
-test.describe('My Training Module - GCP & Azure Suite', () => {
-    test.setTimeout(240000); // 4 minutes for comprehensive E2E flows
+test.describe('My Training Module - Multi-Model E2E Suite', () => {
+    test.setTimeout(300000); // 5 minutes for complex E2E flows
 
     test.beforeEach(async ({ loginPage }) => {
         await loginPage.navigate();
         await loginPage.login('patil.tanmay9900@gmail.com', 'Ganesha@5050');
     });
 
-    const testScenarios = [
-        // GCP Scenarios
-        {
-            provider: 'GCP',
-            type: 'SFT',
-            model: 'Llama3-1-8B',
-            region: 'asia-south1',
-            path: 'gs://inference-training-data/llama3-8b/dataset.json'
-        },
-        {
-            provider: 'GCP',
-            type: 'SFT',
-            distributionType: 'DDP',
-            model: 'Llama3-1-8B',
-            region: 'asia-south1',
-            path: 'gs://inference-training-data/llama3-8b/dataset.json'
-        },
-        {
-            provider: 'GCP',
-            type: 'SFT',
-            distributionType: 'DeepSpeed',
-            model: 'Llama3-1-8B',
-            region: 'asia-south1',
-            path: 'gs://inference-training-data/llama3-8b/dataset.json'
-        },
-        {
-            provider: 'GCP',
-            type: 'RLHF',
-            model: 'Llama3-1-8B',
-            region: 'asia-south1',
-            path: 'gs://inference-training-data/llama3-8b/rlhfllama.zip'
-        },
-        /* Commenting out Azure flow for now
-        {
-            provider: 'Azure',
-            type: 'SFT',
-            model: 'Llama3-1-8B',
-            region: 'eastus',
-            path: 'https://yottastorage.blob.core.windows.net/yotta-storage/llama3-8b/dataset.json'
-        },
-        {
-            provider: 'Azure',
-            type: 'RLHF',
-            model: 'Llama3-1-8B',
-            region: 'eastus',
-            path: 'https://yottastorage.blob.core.windows.net/yotta-storage/llama3-8b/rlhfllama.zip'
+    // Generate Scenarios Dynamically for all models
+    const testScenarios: any[] = [];
+    
+    trainingModels.forEach(config => {
+        // 1. Standard SFT (Always supported)
+        testScenarios.push({ ...config, type: 'SFT', path: config.sftPath });
+        
+        // 2. SFT DDP (Assuming supported for all SFT)
+        testScenarios.push({ ...config, type: 'SFT', distributionType: 'DDP', path: config.sftPath });
+        
+        // 3. SFT DeepSpeed (Assuming supported for all SFT)
+        testScenarios.push({ ...config, type: 'SFT', distributionType: 'DeepSpeed', path: config.sftPath });
+        
+        // 4. RLHF (Conditional)
+        if (config.supportsRLHF) {
+            testScenarios.push({ ...config, type: 'RLHF', path: config.rlhfPath });
         }
-        */
-    ];
+    });
 
     for (const data of testScenarios) {
-        test(`TC-TRAIN: ${data.provider} ${data.type}${data.distributionType ? '-' + data.distributionType : ''} - ${data.model} Creation`, async ({ trainingPage, page }) => {
-            const trainingName = `${data.provider}-${data.type}${data.distributionType ? '-' + data.distributionType : ''}-${Date.now()}`;
+        test(`TC-TRAIN: ${data.model} - ${data.provider} ${data.type}${data.distributionType ? '-' + data.distributionType : ''} Creation`, async ({ trainingPage, page }) => {
+            const dist = data.distributionType ? `-${data.distributionType}` : '';
+            const trainingName = `${data.model}-${data.provider}-${data.type}${dist}-${Date.now()}`;
             const datasetName = `DATASET-${data.model}-${data.provider}-${data.type}`;
 
             // Senior Engineer Healer: Use a retry loop to handle flaky GPU selection
@@ -75,14 +46,14 @@ test.describe('My Training Module - GCP & Azure Suite', () => {
 
                     // Step 1: Basic Details
                     await expect(page.getByRole('heading', { name: /Create Training/i })).toBeVisible({ timeout: 10000 });
-                    await trainingPage.fillBasicDetails(trainingName, 'Automated Test for ' + data.provider);
+                    await trainingPage.fillBasicDetails(trainingName, `Automated Test for ${data.model} on ${data.provider}`);
 
-                    // Step 2: Model Selection
-                    await trainingPage.selectModel('Large Language Model', 'Text Generation', data.model);
+                    // Step 2: Model Selection (Now uses dynamic metadata)
+                    await trainingPage.selectModel(data.category, data.task, data.model);
 
                     // Step 3: Training Configuration
-                    const typeLabel = data.type === 'SFT' ? /SFT/i : /RLHF/i;
-                    await trainingPage.selectTrainingConfiguration(typeLabel.source, data.distributionType as any);
+                    const typeLabel = data.type === 'SFT' ? data.sftLabel : data.rlhfLabel;
+                    await trainingPage.selectTrainingConfiguration(typeLabel, data.distributionType as any, data.model);
 
                     // Step 4: Smart Dataset Selection
                     await trainingPage.selectOrCreateDataset({
@@ -101,7 +72,7 @@ test.describe('My Training Module - GCP & Azure Suite', () => {
                     await trainingPage.configureInfrastructure('H100');
 
                     // Step 7: Option Settings and Submit
-                    await trainingPage.configureOptionsAndSubmit('AWQ');
+                    await trainingPage.configureOptionsAndSubmit(data.preferredQuantization);
 
                     // Verification
                     await trainingPage.verifyTrainingCreation();
