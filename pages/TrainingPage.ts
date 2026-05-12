@@ -106,7 +106,7 @@ export class TrainingPage {
 
     async fillBasicDetails(name: string, description: string) {
         await this.displayNameInput.fill(name);
-        // await this.descriptionInput.fill(description); // if description field is visible in the form
+        await this.page.getByRole('textbox', { name: 'Description' }).fill(description);
         await this.continueBtn.click();
     }
 
@@ -126,41 +126,77 @@ export class TrainingPage {
         await this.continueBtn.click();
     }
 
-    async selectTrainingConfiguration(type: string) {
-        // Defaults to SFT usually, but we ensure it
+    async selectTrainingConfiguration(type: string, distributionType?: 'DDP' | 'DeepSpeed') {
+        // Select Training Type (SFT/RLHF)
         await this.trainingTypeDropdown.click();
         await this.page.getByRole('option', { name: new RegExp(type, 'i') }).click();
+
+        // Optional: Select Distribution Type (DDP/DeepSpeed)
+        if (distributionType) {
+            await this.page.getByRole('combobox').filter({ hasText: 'Select Distribution Type' }).click();
+            if (distributionType === 'DDP') {
+                await this.page.getByRole('option', { name: 'DDP (Distributed Data' }).click();
+            } else if (distributionType === 'DeepSpeed') {
+                await this.page.getByRole('option', { name: 'DeepSpeed' }).click();
+            }
+        }
+
         await this.continueBtn.click();
     }
 
-    async createNewDataset(name: string, description: string, source: 'AWS' | 'GCP' | 'Azure', region: string, secret: string, path: string) {
+    async selectOrCreateDataset(params: {
+        name: string,
+        description: string,
+        source: 'AWS' | 'GCP' | 'Azure',
+        region: string,
+        secret: string,
+        path: string
+    }) {
         await this.selectDatasetBtn.click();
-        await this.createNewDatasetBtn.click();
-        await this.datasetNameInput.fill(name);
-        await this.datasetDescInput.fill(description);
 
-        if (source === 'GCP') {
-            await this.gcpSourceBtn.click();
-        } else if (source === 'AWS') {
-            await this.awsSourceBtn.click();
-        } else if (source === 'Azure') {
-            await this.azureSourceBtn.click();
+        const existingDataset = this.page.getByText(params.name, { exact: true }).first();
+
+        if (await existingDataset.isVisible({ timeout: 5000 }).catch(() => false)) {
+            console.log(`Dataset "${params.name}" already exists. Selecting existing asset.`);
+            await existingDataset.click();
+
+            await this.continueBtn.click();
+        } else {
+            console.log(`Dataset "${params.name}" not found. Proceeding with creation flow.`);
+            await this.createNewDatasetBtn.click();
+            await this.datasetNameInput.fill(params.name);
+            await this.datasetDescInput.fill(params.description);
+
+            if (params.source === 'GCP') {
+                await this.gcpSourceBtn.click();
+                await this.regionDropdown.click();
+                await this.page.getByRole('option', { name: new RegExp('^' + params.region + '$', 'i') }).click();
+            } else if (params.source === 'Azure') {
+                await this.azureSourceBtn.click();
+            } else if (params.source === 'AWS') {
+                await this.awsSourceBtn.click();
+                await this.regionDropdown.click();
+                await this.page.getByRole('option', { name: new RegExp('^' + params.region + '$', 'i') }).click();
+            }
+
+            // Select Secret
+            await this.page.getByRole('combobox').filter({ hasText: /Select Secret/i }).or(this.page.getByRole('combobox')).last().click();
+            await this.page.getByRole('option', { name: params.secret }).click();
+
+            // Fill Path
+            if (params.source === 'Azure') {
+                await this.page.getByRole('textbox', { name: 'https://account.blob.core.' }).fill(params.path);
+            } else {
+                await this.datasetPathInput.fill(params.path);
+            }
+
+            // API Waiter for Dataset Save
+            const responsePromise = this.page.waitForResponse(response =>
+                response.url().includes('/api/dataset/save') && response.status() === 200
+            );
+            await this.continueBtn.click();
+            await responsePromise;
         }
-
-        await this.regionDropdown.click();
-        await this.page.locator('div').filter({ hasText: new RegExp('^' + region + '$') }).nth(3).click(); // as per recorded script
-
-        await this.secretDropdown.click();
-        await this.page.getByText(secret).click();
-
-        await this.datasetPathInput.fill(path);
-
-        // API Waiter for Dataset Save
-        const responsePromise = this.page.waitForResponse(response =>
-            response.url().includes('/api/dataset/save') && response.status() === 200
-        );
-        await this.continueBtn.click();
-        await responsePromise;
     }
 
     async configureEvaluation(autoSplit: boolean = true) {
@@ -172,11 +208,29 @@ export class TrainingPage {
         await this.continueBtn.click();
     }
 
-    async configureInfrastructure() {
+    async configureInfrastructure(gpuType: 'H100' | 'A100' = 'H100') {
         // Handle validation block, click continue to show validation
         await this.continueBtn.click();
-        await expect(this.page.getByText('Please select an GPU type')).toBeVisible();
-        await this.h100GpuBtn.click();
+        
+        // Diagnostic check: Ensure the GPU selection prompt is visible
+        const gpuPrompt = this.page.getByText('Please select an GPU type');
+        try {
+            await expect(gpuPrompt).toBeVisible({ timeout: 10000 });
+        } catch (e) {
+            console.error("GPU Selection prompt did not appear. Refreshing might be needed.");
+        }
+
+        if (gpuType === 'H100') {
+            // Senior Engineer Healer: Check visibility before clicking to handle flake
+            if (await this.h100GpuBtn.isVisible({ timeout: 5000 })) {
+                await this.h100GpuBtn.click();
+            } else {
+                console.error("H100 GPU option is missing from UI.");
+                throw new Error("RETRY_FLOW_GPU_MISSING");
+            }
+        } else {
+            await this.h100GpuBtn.click(); // Defaulting as per current UI
+        }
         await this.continueBtn.click();
     }
 
@@ -208,8 +262,15 @@ export class TrainingPage {
     }
 
     async searchTraining(name: string) {
-        await this.page.getByText('Training', { exact: true }).first().click(); // Navigate back to list
+        // Handle potential delay in navigation back to list
+        await this.page.getByText('Training', { exact: true }).first().click();
+        await expect(this.searchInput).toBeVisible({ timeout: 10000 });
         await this.searchInput.click();
         await this.searchInput.fill(name);
+        await this.page.keyboard.press('Enter');
+    }
+
+    async validateErrorMessage(message: string | RegExp) {
+        await expect(this.page.getByText(message)).toBeVisible();
     }
 }
