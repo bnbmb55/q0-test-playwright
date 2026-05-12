@@ -4,6 +4,7 @@ import { RegistrationPage } from '../pages/RegistrationPage';
 import { DashboardPage } from '../pages/DashboardPage';
 import { ProfilePage } from '../pages/ProfilePage';
 import { MarketplacePage } from '../pages/MarketplacePage';
+import { TrainingPage } from '../pages/TrainingPage';
 
 // Define the types for our fixtures
 type MyFixtures = {
@@ -12,6 +13,7 @@ type MyFixtures = {
     dashboardPage: DashboardPage;
     profilePage: ProfilePage;
     marketplacePage: MarketplacePage;
+    trainingPage: TrainingPage;
 };
 
 // Extend the base test with our new fixtures
@@ -30,6 +32,9 @@ export const test = base.extend<MyFixtures>({
     },
     marketplacePage: async ({ page }, use) => {
         await use(new MarketplacePage(page));
+    },
+    trainingPage: async ({ page }, use) => {
+        await use(new TrainingPage(page));
     },
 });
 

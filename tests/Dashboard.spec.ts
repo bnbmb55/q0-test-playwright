@@ -28,9 +28,9 @@ test.describe('Dashboard Functionality', () => {
         await loginPage.login('patil.tanmay9900@gmail.com', 'Ganesha@5050');
         await dashboardPage.verifyDashboardVisible();
         
-        await expect(dashboardPage.page.getByText('Marketplace')).toBeVisible({ timeout: 30000 });
-        await expect(dashboardPage.page.getByText('Playground')).toBeVisible({ timeout: 30000 });
-        await expect(dashboardPage.page.getByText('Go to Docs')).toBeVisible({ timeout: 30000 });
+        await expect(dashboardPage.page.getByText('Marketplace', { exact: true })).toBeVisible({ timeout: 30000 });
+        await expect(dashboardPage.page.getByText('Playground', { exact: true })).toBeVisible({ timeout: 30000 });
+        await expect(dashboardPage.page.getByText('Go to Docs', { exact: true })).toBeVisible({ timeout: 30000 });
     });
 
     test('TC-DB-04: Verify User Profile menu options', async ({ loginPage, dashboardPage }) => {
