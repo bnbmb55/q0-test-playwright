@@ -50,7 +50,7 @@ export const trainingModels: ModelConfig[] = [
         supportsRLHF: true,
         preferredQuantization: 'F16',
         sftLabel: 'SFT (Supervised Fine-Tuning)',
-        rlhfLabel: 'Direct Preference Optimization(DPO)'
+        rlhfLabel: 'Direct Preference Optimization'
     },
     {
         model: 'Whisper-Large-V3',

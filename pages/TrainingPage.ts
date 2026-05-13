@@ -64,7 +64,8 @@ export class TrainingPage {
         this.baseModelDropdown = page.getByRole('combobox').nth(2);
 
         // Step 3
-        this.trainingTypeDropdown = page.getByRole('combobox').nth(3);
+        // In Step 3, Step 2 comboboxes are replaced by text, so Training Type is the first combobox.
+        this.trainingTypeDropdown = page.getByRole('combobox').first();
 
         // Step 4
         this.selectDatasetBtn = page.getByRole('button', { name: 'Select dataset' });
@@ -106,7 +107,7 @@ export class TrainingPage {
 
     async fillBasicDetails(name: string, description: string) {
         await this.displayNameInput.fill(name);
-        await this.page.getByRole('textbox', { name: 'Description' }).fill(description);
+        await this.descriptionInput.fill(description);
         await this.continueBtn.click();
     }
 
@@ -137,28 +138,35 @@ export class TrainingPage {
             isCombinedDropdown = true;
         }
 
+        // Wait for Step 3 to load properly
+        await expect(this.page.getByRole('heading', { name: /Train configuration/i })).toBeVisible({ timeout: 10000 });
+
         // Select Training Type (SFT/RLHF/DPO/Single GPU/etc.)
         await this.trainingTypeDropdown.click();
         
-        // Selection part - using exact text or label for robustness
-        const option = this.page.getByRole('option', { name: targetType }).or(this.page.getByText(targetType)).first();
-        await option.click();
+        // Selection part - using regex for robustness
+        const escaped = targetType.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const targetRegex = new RegExp(escaped, 'i');
+        const option = this.page.getByRole('option', { name: targetRegex }).or(this.page.getByText(targetRegex)).first();
+        await option.waitFor({ state: 'visible', timeout: 10000 });
+        await option.click({ force: true });
 
         // Optional: Select Distribution Type (DDP/DeepSpeed) - only if not already handled
         if (distributionType && !isCombinedDropdown) {
             // Wait for and click the Distribution Type combobox
-            const distCombobox = this.page.getByRole('combobox').filter({ hasText: /Select Distribution Type/i });
-            await distCombobox.click();
+            const distCombobox = this.page.getByRole('combobox').filter({ hasText: /Distribution/i });
+            await distCombobox.waitFor({ state: 'visible', timeout: 15000 });
+            await distCombobox.click({ force: true });
 
             if (distributionType === 'DDP') {
-                await this.page.getByText('DDP (Distributed Data').click();
+                await this.page.getByText('DDP (Distributed Data').click({ force: true });
             } else if (distributionType === 'DeepSpeed') {
                 // Handle potential DDP default
                 const ddpSelected = this.page.getByRole('combobox').filter({ hasText: 'DDP (Distributed Data' });
                 if (await ddpSelected.isVisible()) {
-                    await ddpSelected.click();
+                    await ddpSelected.click({ force: true });
                 }
-                await this.page.getByLabel('DeepSpeed').locator('div').filter({ hasText: 'DeepSpeed' }).click();
+                await this.page.getByLabel('DeepSpeed').locator('div').filter({ hasText: 'DeepSpeed' }).click({ force: true });
             }
         }
 
