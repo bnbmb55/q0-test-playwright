@@ -1,4 +1,4 @@
-import { Page, Locator, expect } from '@playwright/test';
+import { Page, Locator, expect, test } from '@playwright/test';
 
 export class TrainingPage {
     readonly page: Page;
@@ -6,7 +6,12 @@ export class TrainingPage {
     // Navigation
     readonly myTrainingsMenu: Locator;
     readonly createTrainingBtn: Locator;
+    readonly startTrainingBtn: Locator;
     readonly continueBtn: Locator;
+    readonly secretsMenu: Locator;
+    readonly createNewSecretBtn: Locator;
+    readonly secretDisplayNameInput: Locator;
+    readonly createSecretBtn: Locator;
 
     // Step 1: Basic Details
     readonly displayNameInput: Locator;
@@ -52,7 +57,14 @@ export class TrainingPage {
 
         this.myTrainingsMenu = page.getByRole('button', { name: /My Trainings/i });
         this.createTrainingBtn = page.getByRole('button', { name: 'Create Model Training' });
+        this.startTrainingBtn = page.getByRole('button', { name: 'Start Training' });
         this.continueBtn = page.getByRole('button', { name: 'Continue' });
+
+        // Secrets Management
+        this.secretsMenu = page.getByRole('button', { name: 'Secrets Secrets' });
+        this.createNewSecretBtn = page.getByRole('button', { name: 'Create New Secret' });
+        this.secretDisplayNameInput = page.getByRole('textbox', { name: 'Enter a display name for your' });
+        this.createSecretBtn = page.getByRole('button', { name: 'Create Secret' });
 
         // Step 1
         this.displayNameInput = page.getByRole('textbox', { name: /Display Name/i });
@@ -97,80 +109,141 @@ export class TrainingPage {
     }
 
     async navigateToMyTrainings() {
-        await this.myTrainingsMenu.click();
-        await expect(this.createTrainingBtn).toBeVisible();
+        await test.step('Navigate to My Trainings', async () => {
+            await this.myTrainingsMenu.click();
+            // Senior Engineer Tip: Handle both 'Create Model Training' and 'Start Training' for new users
+            await expect(this.createTrainingBtn.or(this.startTrainingBtn)).toBeVisible({ timeout: 15000 });
+        });
     }
 
     async clickCreateTraining() {
-        await this.createTrainingBtn.click();
+        await test.step('Open Training Form', async () => {
+            // Playwright .or() waits for either element to become visible, preventing race conditions
+            const btn = this.startTrainingBtn.or(this.createTrainingBtn);
+            await btn.waitFor({ state: 'visible', timeout: 10000 });
+            await btn.click();
+        });
+    }
+
+    async ensureSecretExists(secretName: string, jsonConfig: string) {
+        await test.step(`Ensure Secret Exists: ${secretName}`, async () => {
+            await this.secretsMenu.click();
+            await this.page.waitForLoadState('networkidle');
+            
+            // Check if secret already exists in the list
+            const secretRow = this.page.getByRole('cell', { name: new RegExp(secretName, 'i') });
+            if (await secretRow.isVisible({ timeout: 5000 }).catch(() => false)) {
+                console.log(`Secret "${secretName}" already exists.`);
+                return;
+            }
+
+            console.log(`Secret "${secretName}" not found. Creating new secret...`);
+            
+            // Handle both empty state and list state
+            const createBtn = this.createNewSecretBtn.or(this.createSecretBtn);
+            
+            try {
+                // Wait for either button to appear
+                await createBtn.first().waitFor({ state: 'visible', timeout: 5000 });
+                await createBtn.first().click();
+            } catch (e) {
+                // Fail explicitly here so we know the pre-flight failed
+                throw new Error("Could not find either 'Create New Secret' or 'Create Secret' button. UI state unknown.");
+            }
+            
+            await this.secretDisplayNameInput.fill(secretName);
+            await this.continueBtn.click();
+            
+            // Follow user's sequence: select AWS then GCP to ensure correct form state
+            await this.page.getByRole('button', { name: 'AWS' }).click().catch(() => {});
+            await this.gcpSourceBtn.click();
+            
+            // Follow user's specific editor focus and selection sequence
+            const editorFocus = this.page.locator('div').filter({ hasText: /^\{$/ }).first();
+            await editorFocus.click();
+            
+            const editor = this.page.getByRole('textbox', { name: 'Editor content' });
+            await editor.press('ControlOrMeta+a');
+            await editor.fill(jsonConfig); // Using fill() for speed
+            
+            await this.createSecretBtn.click();
+            await expect(this.page.getByRole('cell', { name: new RegExp(secretName, 'i') })).toBeVisible({ timeout: 20000 });
+            console.log(`Secret "${secretName}" created successfully.`);
+        });
     }
 
     async fillBasicDetails(name: string, description: string) {
-        await this.displayNameInput.fill(name);
-        await this.descriptionInput.fill(description);
-        await this.continueBtn.click();
+        await test.step(`Fill Basic Details: ${name}`, async () => {
+            await this.displayNameInput.fill(name);
+            await this.descriptionInput.fill(description);
+            await this.continueBtn.click();
+        });
     }
 
     async selectModel(category: string, task: string, model: string) {
-        await this.modelCategoryDropdown.click();
-        await this.page.getByText(category, { exact: true }).click();
+        await test.step(`Select Model: ${model}`, async () => {
+            await this.modelCategoryDropdown.click();
+            await this.page.getByText(category, { exact: true }).click();
 
-        // Select Model Task
-        await this.modelTaskDropdown.click();
-        await this.page.getByRole('option', { name: new RegExp(task, 'i') }).click();
+            // Select Model Task
+            await this.modelTaskDropdown.click();
+            await this.page.getByRole('option', { name: new RegExp(task, 'i') }).click();
 
-        // Wait for Base Model dropdown to become active and select
-        await expect(this.baseModelDropdown).toBeEnabled({ timeout: 15000 });
-        await this.baseModelDropdown.click();
-        await this.page.getByRole('option', { name: new RegExp(model, 'i') }).click();
+            // Wait for Base Model dropdown to become active and select
+            await expect(this.baseModelDropdown).toBeEnabled({ timeout: 15000 });
+            await this.baseModelDropdown.click();
+            await this.page.getByRole('option', { name: new RegExp(model, 'i') }).click();
 
-        await this.continueBtn.click();
+            await this.continueBtn.click();
+        });
     }
 
     async selectTrainingConfiguration(type: string, distributionType?: 'DDP' | 'DeepSpeed', modelName?: string) {
-        // Handle Whisper special case where DDP/DeepSpeed are in the main dropdown
-        // If type is 'Single GPU' or model is Whisper, it implies a combined UI
-        let targetType = type;
-        let isCombinedDropdown = false;
-        
-        if ((type === 'Single GPU' || modelName?.includes('Whisper')) && distributionType) {
-            targetType = distributionType;
-            isCombinedDropdown = true;
-        }
-
-        // Wait for Step 3 to load properly
-        await expect(this.page.getByRole('heading', { name: /Train configuration/i })).toBeVisible({ timeout: 10000 });
-
-        // Select Training Type (SFT/RLHF/DPO/Single GPU/etc.)
-        await this.trainingTypeDropdown.click();
-        
-        // Selection part - using regex for robustness
-        const escaped = targetType.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const targetRegex = new RegExp(escaped, 'i');
-        const option = this.page.getByRole('option', { name: targetRegex }).or(this.page.getByText(targetRegex)).first();
-        await option.waitFor({ state: 'visible', timeout: 10000 });
-        await option.click({ force: true });
-
-        // Optional: Select Distribution Type (DDP/DeepSpeed) - only if not already handled
-        if (distributionType && !isCombinedDropdown) {
-            // Wait for and click the Distribution Type combobox
-            const distCombobox = this.page.getByRole('combobox').filter({ hasText: /Distribution/i });
-            await distCombobox.waitFor({ state: 'visible', timeout: 15000 });
-            await distCombobox.click({ force: true });
-
-            if (distributionType === 'DDP') {
-                await this.page.getByText('DDP (Distributed Data').click({ force: true });
-            } else if (distributionType === 'DeepSpeed') {
-                // Handle potential DDP default
-                const ddpSelected = this.page.getByRole('combobox').filter({ hasText: 'DDP (Distributed Data' });
-                if (await ddpSelected.isVisible()) {
-                    await ddpSelected.click({ force: true });
-                }
-                await this.page.getByLabel('DeepSpeed').locator('div').filter({ hasText: 'DeepSpeed' }).click({ force: true });
+        await test.step(`Configure Training Type: ${type}`, async () => {
+            // Handle Whisper special case where DDP/DeepSpeed are in the main dropdown
+            // If type is 'Single GPU' or model is Whisper, it implies a combined UI
+            let targetType = type;
+            let isCombinedDropdown = false;
+            
+            if ((type === 'Single GPU' || modelName?.includes('Whisper')) && distributionType) {
+                targetType = distributionType;
+                isCombinedDropdown = true;
             }
-        }
 
-        await this.continueBtn.click();
+            // Wait for Step 3 to load properly
+            await expect(this.page.getByRole('heading', { name: /Train configuration/i })).toBeVisible({ timeout: 10000 });
+
+            // Select Training Type (SFT/RLHF/DPO/Single GPU/etc.)
+            await this.trainingTypeDropdown.click();
+            
+            // Selection part - using regex for robustness
+            const escaped = targetType.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const targetRegex = new RegExp(escaped, 'i');
+            const option = this.page.getByRole('option', { name: targetRegex }).or(this.page.getByText(targetRegex)).first();
+            await option.waitFor({ state: 'visible', timeout: 10000 });
+            await option.click({ force: true });
+
+            // Optional: Select Distribution Type (DDP/DeepSpeed) - only if not already handled
+            if (distributionType && !isCombinedDropdown) {
+                // Wait for and click the Distribution Type combobox
+                const distCombobox = this.page.getByRole('combobox').filter({ hasText: /Distribution/i });
+                await distCombobox.waitFor({ state: 'visible', timeout: 15000 });
+                await distCombobox.click({ force: true });
+
+                if (distributionType === 'DDP') {
+                    await this.page.getByText('DDP (Distributed Data').click({ force: true });
+                } else if (distributionType === 'DeepSpeed') {
+                    // Handle potential DDP default
+                    const ddpSelected = this.page.getByRole('combobox').filter({ hasText: 'DDP (Distributed Data' });
+                    if (await ddpSelected.isVisible()) {
+                        await ddpSelected.click({ force: true });
+                    }
+                    await this.page.getByLabel('DeepSpeed').locator('div').filter({ hasText: 'DeepSpeed' }).click({ force: true });
+                }
+            }
+
+            await this.continueBtn.click();
+        });
     }
 
     async selectOrCreateDataset(params: {
@@ -181,122 +254,134 @@ export class TrainingPage {
         secret: string,
         path: string
     }) {
-        await this.selectDatasetBtn.click();
+        await test.step(`Select or Create Dataset: ${params.name}`, async () => {
+            await this.selectDatasetBtn.click();
 
-        const existingDataset = this.page.getByText(params.name, { exact: true }).first();
+            const existingDataset = this.page.getByText(params.name, { exact: true }).first();
 
-        if (await existingDataset.isVisible({ timeout: 5000 }).catch(() => false)) {
-            console.log(`Dataset "${params.name}" already exists. Selecting existing asset.`);
-            await existingDataset.click();
-
-            await this.continueBtn.click();
-        } else {
-            console.log(`Dataset "${params.name}" not found. Proceeding with creation flow.`);
-            await this.createNewDatasetBtn.click();
-            await this.datasetNameInput.fill(params.name);
-            await this.datasetDescInput.fill(params.description);
-
-            if (params.source === 'GCP') {
-                await this.gcpSourceBtn.click();
-                await this.regionDropdown.click();
-                await this.page.getByRole('option', { name: new RegExp('^' + params.region + '$', 'i') }).click();
-            } else if (params.source === 'Azure') {
-                await this.azureSourceBtn.click();
-            } else if (params.source === 'AWS') {
-                await this.awsSourceBtn.click();
-                await this.regionDropdown.click();
-                await this.page.getByRole('option', { name: new RegExp('^' + params.region + '$', 'i') }).click();
-            }
-
-            // Select Secret
-            await this.page.getByRole('combobox').filter({ hasText: /Select Secret/i }).or(this.page.getByRole('combobox')).last().click();
-            await this.page.getByRole('option', { name: params.secret }).click();
-
-            // Fill Path
-            if (params.source === 'Azure') {
-                await this.page.getByRole('textbox', { name: 'https://account.blob.core.' }).fill(params.path);
+            if (await existingDataset.isVisible({ timeout: 5000 }).catch(() => false)) {
+                console.log(`Dataset "${params.name}" already exists. Selecting existing asset.`);
+                await existingDataset.click();
+                await this.continueBtn.click();
             } else {
-                await this.datasetPathInput.fill(params.path);
-            }
+                console.log(`Dataset "${params.name}" not found. Proceeding with creation flow.`);
+                await this.createNewDatasetBtn.click();
+                await this.datasetNameInput.fill(params.name);
+                await this.datasetDescInput.fill(params.description);
 
-            // API Waiter for Dataset Save
-            const responsePromise = this.page.waitForResponse(response =>
-                response.url().includes('/api/dataset/save') && response.status() === 200
-            );
-            await this.continueBtn.click();
-            await responsePromise;
-        }
+                // Select Source and check secrets
+                if (params.source === 'GCP') {
+                    await this.gcpSourceBtn.click();
+                } else if (params.source === 'Azure') {
+                    await this.azureSourceBtn.click();
+                } else if (params.source === 'AWS') {
+                    await this.awsSourceBtn.click();
+                }
+
+                // Senior Engineer Tip: Since we handled Secrets in the Pre-flight step, it MUST exist.
+                await this.secretDropdown.click();
+                const secretOption = this.page.getByRole('option', { name: params.secret });
+                
+                await expect(secretOption).toBeVisible({ 
+                    timeout: 5000, 
+                    message: `Secret "${params.secret}" is missing! Pre-flight setup should have created it.` 
+                });
+                await secretOption.click();
+
+                // Fill Path
+                if (params.source === 'Azure') {
+                    await this.page.getByRole('textbox', { name: 'https://account.blob.core.' }).fill(params.path);
+                } else {
+                    await this.datasetPathInput.fill(params.path);
+                }
+
+                // API Waiter for Dataset Save
+                const responsePromise = this.page.waitForResponse(response =>
+                    response.url().includes('/api/dataset/save') && response.status() === 200
+                );
+                await this.continueBtn.click();
+                await responsePromise;
+            }
+        });
     }
 
     async configureEvaluation(autoSplit: boolean = true) {
-        // First click label to expand/enable maybe? As per script: await page.locator('label').click();
-        await this.page.locator('label').first().click({ force: true });
-        if (autoSplit) {
-            await this.autoSplitBtn.click();
-        }
-        await this.continueBtn.click();
+        await test.step('Configure Evaluation', async () => {
+            // First click label to expand/enable maybe? As per script: await page.locator('label').click();
+            await this.page.locator('label').first().click({ force: true });
+            if (autoSplit) {
+                await this.autoSplitBtn.click();
+            }
+            await this.continueBtn.click();
+        });
     }
 
     async configureInfrastructure(gpuType: 'H100' | 'A100' = 'H100') {
-        // Handle validation block, click continue to show validation
-        await this.continueBtn.click();
-        
-        // Diagnostic check: Ensure the GPU selection prompt is visible
-        const gpuPrompt = this.page.getByText('Please select an GPU type');
-        try {
-            await expect(gpuPrompt).toBeVisible({ timeout: 10000 });
-        } catch (e) {
-            console.error("GPU Selection prompt did not appear. Refreshing might be needed.");
-        }
+        await test.step(`Configure Infrastructure: ${gpuType}`, async () => {
+            // Handle validation block, click continue to show validation
+            await this.continueBtn.click();
+            
+            // Diagnostic check: Ensure the GPU selection prompt is visible
+            const gpuPrompt = this.page.getByText('Please select an GPU type');
+            try {
+                await expect(gpuPrompt).toBeVisible({ timeout: 10000 });
+            } catch (e) {
+                console.error("GPU Selection prompt did not appear. Refreshing might be needed.");
+            }
 
-        if (gpuType === 'H100') {
-            // Senior Engineer Healer: Check visibility before clicking to handle flake
-            if (await this.h100GpuBtn.isVisible({ timeout: 5000 })) {
+            if (gpuType === 'H100') {
+                // Senior Engineer Healer: Use auto-retrying expect instead of throwing custom errors
+                await expect(this.h100GpuBtn).toBeVisible({ 
+                    timeout: 15000, 
+                    message: 'H100 GPU option did not load from API in time.' 
+                });
                 await this.h100GpuBtn.click();
             } else {
-                console.error("H100 GPU option is missing from UI.");
-                throw new Error("RETRY_FLOW_GPU_MISSING");
+                await this.h100GpuBtn.click(); // Defaulting as per current UI
             }
-        } else {
-            await this.h100GpuBtn.click(); // Defaulting as per current UI
-        }
-        await this.continueBtn.click();
+            await this.continueBtn.click();
+        });
     }
 
     async configureOptionsAndSubmit(quantization: 'AWQ' | 'F16' = 'AWQ') {
-        if (quantization === 'AWQ') {
-            await this.awqBtn.click({ force: true });
-        } else {
-            await this.f16Btn.click({ force: true });
-        }
+        await test.step(`Configure Options and Submit: ${quantization}`, async () => {
+            if (quantization === 'AWQ') {
+                await this.awqBtn.click({ force: true });
+            } else {
+                await this.f16Btn.click({ force: true });
+            }
 
-        const responsePromise = this.page.waitForResponse(response =>
-            response.url().includes('/Infer/api/model-training/save') && (response.status() === 200 || response.status() === 201),
-            { timeout: 60000 } // 60s timeout for heavy training creation tasks
-        );
+            const responsePromise = this.page.waitForResponse(response =>
+                response.url().includes('/Infer/api/model-training/save') && (response.status() === 200 || response.status() === 201),
+                { timeout: 60000 } // 60s timeout for heavy training creation tasks
+            );
 
-        await this.createTrainingSubmitBtn.click();
+            await this.createTrainingSubmitBtn.click();
 
-        // Wait for the response to resolve before moving to assertions
-        await responsePromise;
+            // Wait for the response to resolve before moving to assertions
+            await responsePromise;
 
-        // Also wait for the URL to change to ensure we are on the details page
-        // Using a more flexible pattern as the URL might contain '/model-training/' or '/training/'
-        await this.page.waitForURL(/.*\/(model-)?training\/.*/, { timeout: 30000 });
+            // Also wait for the URL to change to ensure we are on the details page
+            await this.page.waitForURL(/.*\/(model-)?training\/.*/, { timeout: 30000 });
+        });
     }
 
     async verifyTrainingCreation() {
-        // Senior Engineer Tip: Use stable text-based locators instead of fragile CSS classes
-        await expect(this.page.getByText(/Training Status/i)).toBeVisible({ timeout: 30000 });
+        await test.step('Verify Training Creation Success', async () => {
+            // Senior Engineer Tip: Use stable text-based locators instead of fragile CSS classes
+            await expect(this.page.getByText(/Training Status/i)).toBeVisible({ timeout: 30000 });
+        });
     }
 
     async searchTraining(name: string) {
-        // Handle potential delay in navigation back to list
-        await this.page.getByText('Training', { exact: true }).first().click();
-        await expect(this.searchInput).toBeVisible({ timeout: 10000 });
-        await this.searchInput.click();
-        await this.searchInput.fill(name);
-        await this.page.keyboard.press('Enter');
+        await test.step(`Search and Validate Training: ${name}`, async () => {
+            // Handle potential delay in navigation back to list
+            await this.page.getByText('Training', { exact: true }).first().click();
+            await expect(this.searchInput).toBeVisible({ timeout: 10000 });
+            await this.searchInput.click();
+            await this.searchInput.fill(name);
+            await this.page.keyboard.press('Enter');
+        });
     }
 
     async validateErrorMessage(message: string | RegExp) {
