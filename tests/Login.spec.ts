@@ -10,7 +10,7 @@ test.describe('Login Functionality', () => {
     });
 
     test('TC-LOGIN-01: Verify successful login with valid credentials & session persistence', async ({ loginPage, dashboardPage }) => {
-        await loginPage.login('patil.tanmay9900@gmail.com', 'Ganesha@5050');
+        await loginPage.login('patil.tanmay9900@gmail.com', 'Tanmay@123');
         await dashboardPage.verifyDashboardVisible();
         await loginPage.page.reload();
         await expect(loginPage.page.getByText(/Dashboard|Marketplace|Playground/i).first()).toBeVisible({ timeout: 30000 });
@@ -57,7 +57,7 @@ test.describe('Login Functionality', () => {
         await loginPage.passwordInput.fill('Password123');
         await loginPage.signInButton.click({ force: true });
         await expect(loginPage.page.getByText(/Email is required|Please enter a Correct email/i)).toBeVisible();
-        
+
         // Case 2: Empty password
         await loginPage.emailInput.fill('test@example.com');
         await loginPage.passwordInput.clear();

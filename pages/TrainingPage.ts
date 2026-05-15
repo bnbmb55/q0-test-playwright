@@ -125,52 +125,7 @@ export class TrainingPage {
         });
     }
 
-    async ensureSecretExists(secretName: string, jsonConfig: string) {
-        await test.step(`Ensure Secret Exists: ${secretName}`, async () => {
-            await this.secretsMenu.click();
-            await this.page.waitForLoadState('networkidle');
-            
-            // Check if secret already exists in the list
-            const secretRow = this.page.getByRole('cell', { name: new RegExp(secretName, 'i') });
-            if (await secretRow.isVisible({ timeout: 5000 }).catch(() => false)) {
-                console.log(`Secret "${secretName}" already exists.`);
-                return;
-            }
 
-            console.log(`Secret "${secretName}" not found. Creating new secret...`);
-            
-            // Handle both empty state and list state
-            const createBtn = this.createNewSecretBtn.or(this.createSecretBtn);
-            
-            try {
-                // Wait for either button to appear
-                await createBtn.first().waitFor({ state: 'visible', timeout: 5000 });
-                await createBtn.first().click();
-            } catch (e) {
-                // Fail explicitly here so we know the pre-flight failed
-                throw new Error("Could not find either 'Create New Secret' or 'Create Secret' button. UI state unknown.");
-            }
-            
-            await this.secretDisplayNameInput.fill(secretName);
-            await this.continueBtn.click();
-            
-            // Follow user's sequence: select AWS then GCP to ensure correct form state
-            await this.page.getByRole('button', { name: 'AWS' }).click().catch(() => {});
-            await this.gcpSourceBtn.click();
-            
-            // Follow user's specific editor focus and selection sequence
-            const editorFocus = this.page.locator('div').filter({ hasText: /^\{$/ }).first();
-            await editorFocus.click();
-            
-            const editor = this.page.getByRole('textbox', { name: 'Editor content' });
-            await editor.press('ControlOrMeta+a');
-            await editor.fill(jsonConfig); // Using fill() for speed
-            
-            await this.createSecretBtn.click();
-            await expect(this.page.getByRole('cell', { name: new RegExp(secretName, 'i') })).toBeVisible({ timeout: 20000 });
-            console.log(`Secret "${secretName}" created successfully.`);
-        });
-    }
 
     async fillBasicDetails(name: string, description: string) {
         await test.step(`Fill Basic Details: ${name}`, async () => {
@@ -204,7 +159,7 @@ export class TrainingPage {
             // If type is 'Single GPU' or model is Whisper, it implies a combined UI
             let targetType = type;
             let isCombinedDropdown = false;
-            
+
             if ((type === 'Single GPU' || modelName?.includes('Whisper')) && distributionType) {
                 targetType = distributionType;
                 isCombinedDropdown = true;
@@ -215,7 +170,7 @@ export class TrainingPage {
 
             // Select Training Type (SFT/RLHF/DPO/Single GPU/etc.)
             await this.trainingTypeDropdown.click();
-            
+
             // Selection part - using regex for robustness
             const escaped = targetType.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
             const targetRegex = new RegExp(escaped, 'i');
@@ -252,8 +207,10 @@ export class TrainingPage {
         source: 'AWS' | 'GCP' | 'Azure',
         region: string,
         secret: string,
-        path: string
-    }) {
+        path: string,
+        secretConfig?: string
+    }): Promise<boolean> {
+        let requiresRestart = false;
         await test.step(`Select or Create Dataset: ${params.name}`, async () => {
             await this.selectDatasetBtn.click();
 
@@ -263,13 +220,14 @@ export class TrainingPage {
                 console.log(`Dataset "${params.name}" already exists. Selecting existing asset.`);
                 await existingDataset.click();
                 await this.continueBtn.click();
+                return;
             } else {
                 console.log(`Dataset "${params.name}" not found. Proceeding with creation flow.`);
                 await this.createNewDatasetBtn.click();
                 await this.datasetNameInput.fill(params.name);
                 await this.datasetDescInput.fill(params.description);
 
-                // Select Source and check secrets
+                // Select Source
                 if (params.source === 'GCP') {
                     await this.gcpSourceBtn.click();
                 } else if (params.source === 'Azure') {
@@ -278,15 +236,71 @@ export class TrainingPage {
                     await this.awsSourceBtn.click();
                 }
 
-                // Senior Engineer Tip: Since we handled Secrets in the Pre-flight step, it MUST exist.
+                // Dynamic Secret Verification from Training Form Secret Listing
                 await this.secretDropdown.click();
-                const secretOption = this.page.getByRole('option', { name: params.secret });
-                
-                await expect(secretOption).toBeVisible({ 
-                    timeout: 5000, 
-                    message: `Secret "${params.secret}" is missing! Pre-flight setup should have created it.` 
-                });
-                await secretOption.click();
+                const secretOption = this.page.getByRole('option', { name: new RegExp(params.secret, 'i') }).first();
+
+                if (await secretOption.isVisible({ timeout: 5000 }).catch(() => false)) {
+                    console.log(`Secret "${params.secret}" found in training form secret listing. Using existing secret.`);
+                    await secretOption.click();
+                } else {
+                    console.log(`Secret "${params.secret}" not found in listing! Redirecting to secrets from sidebar...`);
+
+                    await this.secretDropdown.click();
+                    await this.page.waitForTimeout(500);
+                    await this.page.getByRole('button', { name: 'Back' }).click();
+                    await this.page.waitForTimeout(500);
+                    await this.secretsMenu.click({ force: true });
+                    await this.page.waitForLoadState('networkidle');
+
+                    const createBtn = this.createNewSecretBtn.or(this.createSecretBtn);
+                    await createBtn.first().waitFor({ state: 'visible', timeout: 15000 });
+                    await createBtn.first().click();
+
+                    await this.secretDisplayNameInput.fill(params.secret);
+                    await this.continueBtn.click();
+
+                    // Select Source for Secret (Ensuring form state handles dynamic UI)
+                    await this.page.getByRole('button', { name: 'AWS' }).click().catch(() => { });
+                    if (params.source === 'GCP') {
+                        await this.gcpSourceBtn.click();
+                    } else if (params.source === 'Azure') {
+                        await this.azureSourceBtn.click();
+                    } else if (params.source === 'AWS') {
+                        await this.awsSourceBtn.click();
+                    }
+
+                    const editorFocus = this.page.locator('div').filter({ hasText: /^\{$/ }).first();
+                    await editorFocus.click();
+
+                    const editor = this.page.getByRole('textbox', { name: 'Editor content' });
+                    await editor.press('ControlOrMeta+a');
+                    await editor.press('Backspace');
+
+                    const defaultSecretObj = {
+                        service_account_json: JSON.stringify({
+                            type: "service_account",
+                            project_id: "",
+                            private_key_id: "",
+                            private_key: "",
+                            client_email: "",
+                            client_id: "",
+                            auth_uri: "",
+                            token_uri: "",
+                            auth_provider_x509_cert_url: "",
+                            client_x509_cert_url: "",
+                            universe_domain: ""
+                        })
+                    };
+                    await this.page.keyboard.insertText(params.secretConfig || JSON.stringify(defaultSecretObj, null, 2));
+
+                    await this.createSecretBtn.click();
+
+                    await this.page.waitForTimeout(2000);
+
+                    requiresRestart = true;
+                    return;
+                }
 
                 // Fill Path
                 if (params.source === 'Azure') {
@@ -303,6 +317,7 @@ export class TrainingPage {
                 await responsePromise;
             }
         });
+        return requiresRestart;
     }
 
     async configureEvaluation(autoSplit: boolean = true) {
@@ -320,7 +335,7 @@ export class TrainingPage {
         await test.step(`Configure Infrastructure: ${gpuType}`, async () => {
             // Handle validation block, click continue to show validation
             await this.continueBtn.click();
-            
+
             // Diagnostic check: Ensure the GPU selection prompt is visible
             const gpuPrompt = this.page.getByText('Please select an GPU type');
             try {
@@ -331,9 +346,9 @@ export class TrainingPage {
 
             if (gpuType === 'H100') {
                 // Senior Engineer Healer: Use auto-retrying expect instead of throwing custom errors
-                await expect(this.h100GpuBtn).toBeVisible({ 
-                    timeout: 15000, 
-                    message: 'H100 GPU option did not load from API in time.' 
+                await expect(this.h100GpuBtn).toBeVisible({
+                    timeout: 15000,
+                    message: 'H100 GPU option did not load from API in time.'
                 });
                 await this.h100GpuBtn.click();
             } else {

@@ -7,7 +7,7 @@ test.describe('Marketplace Functionality', () => {
 
     test.beforeEach(async ({ loginPage, dashboardPage, marketplacePage }) => {
         await loginPage.navigate();
-        await loginPage.login('patil.tanmay9900@gmail.com', 'Ganesha@5050');
+        await loginPage.login('patil.tanmay9900@gmail.com', 'Tanmay@123');
         await dashboardPage.verifyDashboardVisible();
 
         const marketplaceLink = dashboardPage.page.getByRole('button', { name: /Marketplace/ }).first();
@@ -72,7 +72,7 @@ test.describe('Marketplace Functionality', () => {
         const marketplaceNav = marketplacePage.page.locator('nav, .sidebar, .navigation').getByText('Marketplace', { exact: true }).first();
         await expect(marketplaceNav).toBeVisible({ timeout: 15000 });
         await marketplaceNav.click({ force: true });
-        
+
         await expect(marketplacePage.page).toHaveURL(/marketplace/, { timeout: 30000 });
     });
 

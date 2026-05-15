@@ -2,30 +2,23 @@ import { test, expect } from '../fixtures/base';
 import { trainingModels } from '../data/trainingData';
 
 test.describe('My Training Module - Multi-Model E2E Suite', () => {
-    test.setTimeout(300000); // 5 minutes for complex E2E flows
-    test.describe.configure({ retries: 1 }); // Native Playwright retries instead of custom loop
-
+    test.setTimeout(300000);
+    test.describe.configure({ retries: 1 });
     test.beforeEach(async ({ loginPage, trainingPage }) => {
         await loginPage.navigate();
-        await loginPage.login('sharma.paranv@gmail.com', 'Ganesha@5050');
-        // Handle redirect to Secrets page after login
+        await loginPage.login('vikasnew.rathod@gmail.com', 'Ganesha@5050');
         await trainingPage.navigateToMyTrainings();
     });
 
-    // Generate Scenarios Dynamically for all models
     const testScenarios: any[] = [];
 
     trainingModels.forEach(config => {
-        // 1. Standard SFT (Always supported)
         testScenarios.push({ ...config, type: 'SFT', path: config.sftPath });
 
-        // 2. SFT DDP (Assuming supported for all SFT)
         testScenarios.push({ ...config, type: 'SFT', distributionType: 'DDP', path: config.sftPath });
 
-        // 3. SFT DeepSpeed (Assuming supported for all SFT)
         testScenarios.push({ ...config, type: 'SFT', distributionType: 'DeepSpeed', path: config.sftPath });
 
-        // 4. RLHF (Conditional)
         if (config.supportsRLHF) {
             testScenarios.push({ ...config, type: 'RLHF', path: config.rlhfPath });
         }
@@ -37,60 +30,86 @@ test.describe('My Training Module - Multi-Model E2E Suite', () => {
             const trainingName = `${data.model}-${data.provider}-${data.type}${dist}-${Date.now()}`;
             const datasetName = `DATASET-${data.model}-${data.provider}-${data.type}`;
 
-            // 1. Pre-flight Setup: Ensure prerequisites are met BEFORE starting the form
-            // This handles New vs Existing user states seamlessly without interrupting the wizard
-            await test.step('Pre-flight: Ensure Secrets Exist', async () => {
-                const secretName = `${data.provider} Secret`;
-                await trainingPage.ensureSecretExists(secretName, '{"project_id": "q0-test", "private_key": "dummy"}');
-            });
+            let requiresRestart = false;
+            let attempt = 0;
 
-            await test.step('Navigate and Open Training Form', async () => {
-                await trainingPage.navigateToMyTrainings();
-                await trainingPage.clickCreateTraining();
-            });
+            do {
+                requiresRestart = false;
+                attempt++;
 
-            await test.step('Step 1: Fill Basic Details', async () => {
-                await expect(page.getByRole('heading', { name: /Create Training/i })).toBeVisible({ timeout: 10000 });
-                await trainingPage.fillBasicDetails(trainingName, `Automated Test for ${data.model} on ${data.provider}`);
-            });
-
-            await test.step('Step 2: Select Model', async () => {
-                await trainingPage.selectModel(data.category, data.task, data.model);
-            });
-
-            await test.step('Step 3: Configure Training', async () => {
-                const typeLabel = data.type === 'SFT' ? data.sftLabel : data.rlhfLabel;
-                await trainingPage.selectTrainingConfiguration(typeLabel, data.distributionType as any, data.model);
-            });
-
-            await test.step('Step 4: Dataset and Secret Verification', async () => {
-                await trainingPage.selectOrCreateDataset({
-                    name: datasetName,
-                    description: `Reusable dataset for ${data.model} ${data.provider}`,
-                    source: data.provider as 'GCP' | 'Azure',
-                    region: data.region,
-                    secret: `${data.provider} Secret`,
-                    path: data.path
+                await test.step(`Attempt ${attempt}: Navigate and Open Training Form`, async () => {
+                    await trainingPage.navigateToMyTrainings();
+                    await trainingPage.clickCreateTraining();
                 });
-            });
 
-            await test.step('Step 5: Evaluation Settings', async () => {
-                await trainingPage.configureEvaluation(true);
-            });
+                await test.step(`Attempt ${attempt}: Step 1: Fill Basic Details`, async () => {
+                    await expect(page.getByRole('heading', { name: /Create Training/i })).toBeVisible({ timeout: 10000 });
+                    await trainingPage.fillBasicDetails(trainingName, `Automated Test for ${data.model} on ${data.provider}`);
+                });
 
-            await test.step('Step 6: Infrastructure Setup', async () => {
-                await trainingPage.configureInfrastructure('H100');
-            });
+                await test.step(`Attempt ${attempt}: Step 2: Select Model`, async () => {
+                    await trainingPage.selectModel(data.category, data.task, data.model);
+                });
 
-            await test.step('Step 7: Finalize and Submit', async () => {
-                await trainingPage.configureOptionsAndSubmit(data.preferredQuantization);
-            });
+                await test.step(`Attempt ${attempt}: Step 3: Configure Training`, async () => {
+                    const typeLabel = data.type === 'SFT' ? data.sftLabel : data.rlhfLabel;
+                    await trainingPage.selectTrainingConfiguration(typeLabel, data.distributionType as any, data.model);
+                });
 
-            await test.step('Verify Training Creation', async () => {
-                await trainingPage.verifyTrainingCreation();
-                await trainingPage.searchTraining(trainingName);
-                await expect(page.getByRole('cell', { name: new RegExp(trainingName, 'i') })).toBeVisible();
-            });
+                await test.step(`Attempt ${attempt}: Step 4: Dataset and Secret Verification`, async () => {
+                    const gcpServiceAccountObj = {
+                        type: "service_account",
+                        project_id: "",
+                        private_key_id: "",
+                        private_key: "",
+                        client_email: "",
+                        client_id: "",
+                        auth_uri: "",
+                        token_uri: "",
+                        auth_provider_x509_cert_url: "",
+                        client_x509_cert_url: "",
+                        universe_domain: ""
+                    };
+
+                    const safeGcpSecretConfig = JSON.stringify({
+                        service_account_json: JSON.stringify(gcpServiceAccountObj)
+                    }, null, 2);
+
+                    requiresRestart = await trainingPage.selectOrCreateDataset({
+                        name: datasetName,
+                        description: `Reusable dataset for ${data.model} ${data.provider}`,
+                        source: data.provider as 'GCP' | 'Azure' | 'AWS',
+                        region: data.region,
+                        secret: `${data.provider} Secret`,
+                        path: data.path,
+                        secretConfig: safeGcpSecretConfig
+                    });
+                });
+
+                if (requiresRestart) {
+                    console.log(`Secret was missing and created from sidebar. Restarting the training form (Attempt ${attempt})...`);
+                    continue;
+                }
+
+                await test.step(`Attempt ${attempt}: Step 5: Evaluation Settings`, async () => {
+                    await trainingPage.configureEvaluation(true);
+                });
+
+                await test.step(`Attempt ${attempt}: Step 6: Infrastructure Setup`, async () => {
+                    await trainingPage.configureInfrastructure('H100');
+                });
+
+                await test.step(`Attempt ${attempt}: Step 7: Finalize and Submit`, async () => {
+                    await trainingPage.configureOptionsAndSubmit(data.preferredQuantization);
+                });
+
+                await test.step(`Attempt ${attempt}: Verify Training Creation`, async () => {
+                    await trainingPage.verifyTrainingCreation();
+                    await trainingPage.searchTraining(trainingName);
+                    await expect(page.getByRole('cell', { name: new RegExp(trainingName, 'i') })).toBeVisible();
+                });
+
+            } while (requiresRestart && attempt < 2);
         });
     }
 
