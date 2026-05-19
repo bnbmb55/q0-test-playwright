@@ -279,11 +279,10 @@ export class TrainingPage {
 
                     const defaultSecretObj = {
                         service_account_json: JSON.stringify({
-                            type: "service_account",
+                            type: "",
                             project_id: "",
                             private_key_id: "",
                             private_key: "",
-                            client_email: "",
                             client_id: "",
                             auth_uri: "",
                             token_uri: "",
@@ -291,6 +290,7 @@ export class TrainingPage {
                             client_x509_cert_url: "",
                             universe_domain: ""
                         })
+
                     };
                     await this.page.keyboard.insertText(params.secretConfig || JSON.stringify(defaultSecretObj, null, 2));
 
@@ -388,14 +388,115 @@ export class TrainingPage {
         });
     }
 
+    async verifyTrainingStatus(expectedState: 'Completed' | 'Failed', timeout: number = 300000) {
+        await test.step(`[Auto-Healer] Wait and Verify Training Status reaches: ${expectedState}`, async () => {
+            const statusCard = this.page.locator('h3:has-text("Training Status")').locator('xpath=..');
+            const generalDetailsContainer = this.page.locator('div', { has: this.page.locator('h3', { hasText: 'General Details' }) }).first();
+            const statusLabel = generalDetailsContainer.locator('span').filter({ hasText: /^Status$/ }).first();
+            const generalStatusBadge = statusLabel.locator('xpath=..').locator('span').last();
+
+            const startTime = Date.now();
+            const interval = 15000;
+
+            while (Date.now() - startTime < timeout) {
+                let currentGeneralStatus = '';
+                if (await generalStatusBadge.isVisible()) {
+                    currentGeneralStatus = (await generalStatusBadge.innerText()).trim().toUpperCase();
+                }
+
+                const statusRow = statusCard.locator('div.flex.justify-between').first();
+                const nameRow = statusCard.locator('div.flex.justify-between').last();
+                
+                let count = 0;
+                try {
+                    const nameDivs = nameRow.locator('div.flex-1');
+                    count = await nameDivs.count();
+                    
+                    let lastStepStatus = '';
+                    let hasFailedStep = false;
+                    
+                    for (let i = 0; i < count; i++) {
+                        const name = (await nameDivs.nth(i).innerText()).trim();
+                        const status = (await statusRow.locator('div.flex-1').nth(i).innerText()).trim().toUpperCase();
+                        
+                        if (name === 'Completed') {
+                            lastStepStatus = status;
+                        }
+                        if (status === 'FAILED') {
+                            hasFailedStep = true;
+                        }
+                    }
+
+                    // Check for failure state
+                    if (hasFailedStep || currentGeneralStatus === 'FAILED' || currentGeneralStatus === 'FAIL') {
+                        if (expectedState === 'Failed') {
+                            return; // Reached expected Failed state successfully
+                        }
+                        throw new Error(`Training failed on UI stepper or status badge. Stepper failed: ${hasFailedStep}, Status: ${currentGeneralStatus}`);
+                    }
+
+                    // Check for completed state
+                    if ((lastStepStatus === 'COMPLETE' || lastStepStatus === 'COMPLETED') && currentGeneralStatus === 'COMPLETED') {
+                        if (expectedState === 'Completed') {
+                            return; // Reached expected Completed state successfully
+                        }
+                    }
+                } catch (e: any) {
+                    if (e.message && e.message.includes('Training failed')) {
+                        throw e; // Propagate the explicit fail-fast failure
+                    }
+                    // Ignore elements rendering/missing exceptions during loading transitions
+                }
+
+                await this.page.waitForTimeout(interval);
+            }
+
+            throw new Error(`Training did not reach expected state: ${expectedState} within ${timeout / 1000} seconds.`);
+        });
+    }
+
+    async verifyTrainingStatusInList(trainingName: string, expectedStatus: string, timeout: number = 60000) {
+        await test.step(`Verify status of ${trainingName} in list is ${expectedStatus}`, async () => {
+            const row = this.page.getByRole('row', { name: new RegExp(trainingName, 'i') });
+            const statusCell = row.getByText(new RegExp(expectedStatus, 'i'));
+            
+            // Use expect.poll to handle potential refresh of the list if it stays "In Progress"
+            await expect.poll(async () => {
+                if (await statusCell.isVisible()) {
+                    return true;
+                }
+                
+                // If it is not showing expectedStatus, let's check if the row is visible
+                if (await row.isVisible()) {
+                    console.log(`Status in list is not yet "${expectedStatus}". Reloading page and re-searching...`);
+                    await this.page.reload();
+                    await this.searchTraining(trainingName);
+                } else {
+                    // Row is not visible yet, maybe we are on the wrong page or search is cleared
+                    await this.searchTraining(trainingName);
+                }
+                
+                return await statusCell.isVisible();
+            }, {
+                message: `Status of ${trainingName} did not become "${expectedStatus}" in the list.`,
+                timeout: timeout,
+                intervals: [5000, 10000]
+            }).toBe(true);
+        });
+    }
+
     async searchTraining(name: string) {
         await test.step(`Search and Validate Training: ${name}`, async () => {
-            // Handle potential delay in navigation back to list
-            await this.page.getByText('Training', { exact: true }).first().click();
+            // Navigate back to listing page if not already there
+            if (await this.searchInput.isHidden()) {
+                await this.navigateToMyTrainings();
+            }
             await expect(this.searchInput).toBeVisible({ timeout: 10000 });
             await this.searchInput.click();
             await this.searchInput.fill(name);
             await this.page.keyboard.press('Enter');
+            // Wait for list to filter
+            await this.page.waitForTimeout(1000);
         });
     }
 
