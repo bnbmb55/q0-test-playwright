@@ -19,8 +19,8 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   /* Retry on failure */
   retries: 1,
-  /* Limit workers to 1 to prevent session conflicts with shared accounts */
-  workers: 1,
+  /* Run tests in parallel with multiple workers to prevent blocking, keeping E2E training runs serial */
+  workers: process.env.CI ? 1 : 4,
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
   reporter: 'html',
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */

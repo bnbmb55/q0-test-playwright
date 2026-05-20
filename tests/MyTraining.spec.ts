@@ -9,7 +9,7 @@ import * as path from 'path';
 
 test.describe('My Training Module - Multi-Model E2E Suite', () => {
     test.setTimeout(900000); // 15 mins max per test to accommodate full E2E training execution
-    test.describe.configure({ retries: 0 }); // Disable retries to continuously process additions
+    test.describe.configure({ mode: 'serial', retries: 0 }); // Disable retries and run serially
     
     test.beforeAll(async () => {
         const jobsDir = path.join(__dirname, '..', 'temp_jobs');
@@ -38,8 +38,9 @@ test.describe('My Training Module - Multi-Model E2E Suite', () => {
         }
     });
 
-    for (const data of testScenarios) {
-        test(`TC-TRAIN: ${data.model} - ${data.provider} ${data.type}${data.distributionType ? '-' + data.distributionType : ''} Creation`, async ({ trainingPage, page }) => {
+    testScenarios.forEach((data, index) => {
+        const tcId = `TC-TRAIN-${String(index + 1).padStart(2, '0')}`;
+        test(`${tcId}: Verify training creation for ${data.model} - ${data.provider} ${data.type}${data.distributionType ? '-' + data.distributionType : ''}`, async ({ trainingPage, page }) => {
             const dist = data.distributionType ? `-${data.distributionType}` : '';
             const trainingName = `${data.model}-${data.provider}-${data.type}${dist}-${Date.now()}`;
             const datasetName = `DATASET-${data.model}-${data.provider}-${data.type}`;
@@ -156,9 +157,9 @@ test.describe('My Training Module - Multi-Model E2E Suite', () => {
 
             } while (requiresRestart && attempt < 2);
         });
-    }
+    });
 
-    test('Verify all submitted training jobs via API polling', async () => {
+    test('TC-TRAIN-16: Verify all submitted training jobs via API polling', async () => {
         // Extend timeout for batch verification
         test.setTimeout(1200000); // 20 minutes
 

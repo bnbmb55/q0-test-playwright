@@ -52,6 +52,35 @@ Comprehensive test plan for the Qzero application (https://ui-uat.q0.dev). This 
 ### 3.3 Security Scenarios
 - **TC-DB-05**: Unauthorized access protection (Redirect to signin if unauthenticated).
 
+## 4. Training Functionality (`tests/MyTraining.spec.ts`, `tests/MyTrainingValidation.spec.ts`)
+
+### 4.1 Positive & Dynamic Training Scenarios
+- **TC-TRAIN-01**: Verify Llama3-1-8B - GCP SFT Creation
+- **TC-TRAIN-02**: Verify Llama3-1-8B - GCP SFT-DDP Creation
+- **TC-TRAIN-03**: Verify Llama3-1-8B - GCP SFT-DeepSpeed Creation
+- **TC-TRAIN-04**: Verify Llama3-1-8B - GCP RLHF Creation
+- **TC-TRAIN-05**: Verify Stable-diffusion-3.5 - GCP SFT Creation
+- **TC-TRAIN-06**: Verify Stable-diffusion-3.5 - GCP SFT-DDP Creation
+- **TC-TRAIN-07**: Verify Stable-diffusion-3.5 - GCP SFT-DeepSpeed Creation
+- **TC-TRAIN-08**: Verify Stable-diffusion-3.5 - GCP RLHF Creation
+- **TC-TRAIN-09**: Verify PaddleOCR-VL - GCP SFT Creation
+- **TC-TRAIN-10**: Verify PaddleOCR-VL - GCP SFT-DDP Creation
+- **TC-TRAIN-11**: Verify PaddleOCR-VL - GCP SFT-DeepSpeed Creation
+- **TC-TRAIN-12**: Verify PaddleOCR-VL - GCP RLHF Creation
+- **TC-TRAIN-13**: Verify Whisper-Large-V3 - GCP SFT Creation
+- **TC-TRAIN-14**: Verify Whisper-Large-V3 - GCP SFT-DDP Creation
+- **TC-TRAIN-15**: Verify Whisper-Large-V3 - GCP SFT-DeepSpeed Creation
+- **TC-TRAIN-16**: Verify all submitted training jobs via API polling.
+
+### 4.2 Negative & Validation Scenarios
+- **TC-TRAIN-17**: Verify validation error for empty Display Name (Step 1).
+- **TC-TRAIN-18**: Verify validation error for missing GPU selection (Step 6).
+
+### 4.3 Edge & Security Scenarios
+- **TC-TRAIN-19**: Verify cancel training creation redirect.
+- **TC-TRAIN-20**: Verify unauthorized access protection redirect for training page.
+- **TC-TRAIN-21**: Verify search and filter functionality in My Trainings list.
+
 ---
 ## Test Execution Summary Report - Q0 Automation
 **Date**: 2026-05-06
