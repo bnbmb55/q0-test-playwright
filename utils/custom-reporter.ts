@@ -15,6 +15,7 @@ interface ProcessedTestCase {
     id: string;
     title: string;
     suiteName: string;
+    fileModule: string;
     status: 'passed' | 'failed' | 'skipped';
     duration: number;
     browser: string;
@@ -173,11 +174,13 @@ export default class CustomReporter implements Reporter {
                 const relFile = path.relative(process.cwd(), test.location.file);
                 suiteName = relFile.replace(/\\/g, '/');
             }
+            const fileModule = path.basename(test.location.file);
 
             processedTests.push({
                 id: test.id,
                 title: test.title,
                 suiteName,
+                fileModule,
                 status: status === 'timedOut' ? 'failed' : (status as any),
                 duration,
                 browser,
@@ -910,6 +913,17 @@ export default class CustomReporter implements Reporter {
             border-color: var(--color-brand);
         }
 
+        select.search-input {
+            cursor: pointer;
+            appearance: none;
+            -webkit-appearance: none;
+            background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='rgba(255,255,255,0.5)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+            background-repeat: no-repeat;
+            background-position: right 16px center;
+            background-size: 16px;
+            padding-right: 40px;
+        }
+
         .filter-buttons {
             display: flex;
             gap: 8px;
@@ -1611,6 +1625,12 @@ export default class CustomReporter implements Reporter {
                 <div class="search-bar">
                     <input type="text" class="search-input" id="search-failures" placeholder="Search failed tests..." onkeyup="filterTests('failures')" />
                 </div>
+                <div style="flex: 1; max-width: 250px;">
+                    <select class="search-input" id="module-failures" onchange="filterTests('failures')">
+                        <option value="">All Test Modules</option>
+                        ${Array.from(new Set(data.tests.filter((t: any) => t.status === 'failed').map((t: any) => t.fileModule))).map(mod => `<option value="${mod}">${mod}</option>`).join('')}
+                    </select>
+                </div>
             </div>
             
             <div class="test-list" id="list-failures">
@@ -1624,6 +1644,12 @@ export default class CustomReporter implements Reporter {
             <div class="filter-controls">
                 <div class="search-bar">
                     <input type="text" class="search-input" id="search-passes" placeholder="Search passed tests..." onkeyup="filterTests('passes')" />
+                </div>
+                <div style="flex: 1; max-width: 250px;">
+                    <select class="search-input" id="module-passes" onchange="filterTests('passes')">
+                        <option value="">All Test Modules</option>
+                        ${Array.from(new Set(data.tests.filter((t: any) => t.status === 'passed').map((t: any) => t.fileModule))).map(mod => `<option value="${mod}">${mod}</option>`).join('')}
+                    </select>
                 </div>
             </div>
 
@@ -1791,13 +1817,19 @@ export default class CustomReporter implements Reporter {
         // Real-time filters
         function filterTests(listType) {
             const query = document.getElementById('search-' + listType).value.toLowerCase();
+            const moduleFilter = document.getElementById('module-' + listType).value;
             const listContainer = document.getElementById('list-' + listType);
             const rows = listContainer.getElementsByClassName('test-row');
 
             for (let row of rows) {
                 const title = row.getAttribute('data-title').toLowerCase();
                 const suite = row.getAttribute('data-suite').toLowerCase();
-                if (title.includes(query) || suite.includes(query)) {
+                const mod = row.getAttribute('data-module');
+                
+                const matchesSearch = title.includes(query) || suite.includes(query);
+                const matchesModule = !moduleFilter || mod === moduleFilter;
+
+                if (matchesSearch && matchesModule) {
                     row.style.display = 'block';
                 } else {
                     row.style.display = 'none';
@@ -1941,7 +1973,7 @@ export default class CustomReporter implements Reporter {
         const failScreenshot = t.screenshots.find(s => s.type === 'failure');
 
         return `
-        <div class="test-row ${t.status}" id="row-${t.id}" data-title="${t.title}" data-suite="${t.suiteName}">
+        <div class="test-row ${t.status}" id="row-${t.id}" data-title="${t.title}" data-suite="${t.suiteName}" data-module="${t.fileModule}">
             <div class="test-summary" onclick="toggleDetails('row-${t.id}')">
                 <div class="test-header-left">
                     <span class="status-dot ${t.status}"></span>

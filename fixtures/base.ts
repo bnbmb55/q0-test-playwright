@@ -35,7 +35,9 @@ export const test = base.extend<MyFixtures>({
                 firstGoto = false;
                 // Wait for page to load and take start of test screenshot
                 try {
-                    await page.waitForLoadState('domcontentloaded').catch(() => {});
+                    await page.waitForLoadState('load').catch(() => {});
+                    await page.waitForLoadState('networkidle').catch(() => {});
+                    await page.waitForTimeout(1500); // 1.5s grace period for hydration/rendering
                     const screenshot = await page.screenshot({ fullPage: false });
                     await testInfo.attach('[START] Start of test navigation', {
                         body: screenshot,

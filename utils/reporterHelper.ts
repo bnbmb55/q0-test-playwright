@@ -15,6 +15,8 @@ export class ReporterHelper {
             return;
         }
         try {
+            await this.page.waitForLoadState('load').catch(() => {});
+            await this.page.waitForTimeout(500); // 500ms stabilization wait
             const screenshot = await this.page.screenshot({ fullPage: false });
             await this.testInfo.attach(`[${type.toUpperCase()}] ${description}`, {
                 body: screenshot,
