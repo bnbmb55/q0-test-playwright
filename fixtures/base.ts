@@ -26,31 +26,6 @@ export const test = base.extend<MyFixtures>({
         const helper = new ReporterHelper(page, testInfo);
         await use(helper);
     },
-    page: async ({ page }, use, testInfo) => {
-        const originalGoto = page.goto.bind(page);
-        let firstGoto = true;
-        page.goto = async (url, options) => {
-            const result = await originalGoto(url, options);
-            if (firstGoto) {
-                firstGoto = false;
-                // Wait for page to load and take start of test screenshot
-                try {
-                    await page.waitForLoadState('load').catch(() => {});
-                    await page.waitForLoadState('networkidle').catch(() => {});
-                    await page.waitForTimeout(1500); // 1.5s grace period for hydration/rendering
-                    const screenshot = await page.screenshot({ fullPage: false });
-                    await testInfo.attach('[START] Start of test navigation', {
-                        body: screenshot,
-                        contentType: 'image/png'
-                    });
-                } catch (e) {
-                    console.error('Failed to capture start of test screenshot:', e);
-                }
-            }
-            return result;
-        };
-        await use(page);
-    },
     loginPage: async ({ page }, use) => {
         await use(new LoginPage(page));
     },
