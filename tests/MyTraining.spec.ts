@@ -3,24 +3,23 @@ import { trainingModels } from '../data/trainingData';
 import { EncryptionAndDecryption } from '../utils/encryption';
 import { AuthHelper } from '../utils/authHelper';
 import { TrainingApiHelper } from '../utils/apiHelper';
+import { Environment } from '../utils/environment';
 import { request as playwrightRequest } from '@playwright/test';
 import * as fs from 'fs';
 import * as path from 'path';
 
+
 test.describe('My Training Module - Multi-Model E2E Suite', () => {
     test.setTimeout(900000); // 15 mins max per test to accommodate full E2E training execution
     test.describe.configure({ mode: 'serial', retries: 0 }); // Disable retries and run serially
-    
-    test.beforeAll(async () => {
-        const jobsDir = path.join(__dirname, '..', 'temp_jobs');
-        if (fs.existsSync(jobsDir)) {
-            fs.rmSync(jobsDir, { recursive: true, force: true });
-        }
-    });
+
+    const submittedJobs: Array<{ name: string; id: number; token: string }> = [];
 
     test.beforeEach(async ({ loginPage, trainingPage }) => {
         await loginPage.navigate();
-        await loginPage.login('vikasnew.rathod@gmail.com', 'Ganesha@5050');
+        const email = Environment.Q0_TRAINING_EMAIL;
+        const password = Environment.Q0_TRAINING_PASSWORD;
+        await loginPage.login(email, password);
         await trainingPage.navigateToMyTrainings();
     });
 
@@ -81,22 +80,14 @@ test.describe('My Training Module - Multi-Model E2E Suite', () => {
                 });
 
                 await test.step(`Attempt ${attempt}: Step 4: Dataset and Secret Verification`, async () => {
-                    const gcpServiceAccountObj = {
-                        type: "",
-                        project_id: "",
-                        private_key_id: "",
-                        private_key: "",
-                        client_id: "",
-                        auth_uri: "",
-                        token_uri: "",
-                        auth_provider_x509_cert_url: "",
-                        client_x509_cert_url: "",
-                        universe_domain: ""
-                    };
-
-                    const safeGcpSecretConfig = JSON.stringify({
-                        service_account_json: JSON.stringify(gcpServiceAccountObj)
-                    }, null, 2);
+                    let secretConfig = '';
+                    if (data.provider === 'GCP') {
+                        secretConfig = Environment.getGcpSecretConfig();
+                    } else if (data.provider === 'AWS') {
+                        secretConfig = Environment.getAwsSecretConfig();
+                    } else if (data.provider === 'Azure') {
+                        secretConfig = Environment.getAzureSecretConfig();
+                    }
 
                     requiresRestart = await trainingPage.selectOrCreateDataset({
                         name: datasetName,
@@ -105,7 +96,7 @@ test.describe('My Training Module - Multi-Model E2E Suite', () => {
                         region: data.region,
                         secret: `${data.provider} Secret`,
                         path: data.path,
-                        secretConfig: safeGcpSecretConfig
+                        secretConfig: secretConfig
                     });
                 });
 
@@ -129,7 +120,7 @@ test.describe('My Training Module - Multi-Model E2E Suite', () => {
                 await test.step(`Attempt ${attempt}: Verify Training Creation and Queue for Verification`, async () => {
                     // 1. Verify the training is successfully initiated and details page loads
                     await trainingPage.verifyTrainingCreation();
-                    
+
                     // 2. Extract Training ID and OAuth credentials
                     const url = page.url();
                     const match = url.match(/\/training\/([^\/]+)/) || url.match(/\/model-training\/([^\/]+)/);
@@ -141,16 +132,12 @@ test.describe('My Training Module - Multi-Model E2E Suite', () => {
                     const trainingId = EncryptionAndDecryption.decryptionIds(decodeURIComponent(encryptedId));
                     const authToken = await AuthHelper.getAuthToken(page, capturedToken);
 
-                    // 3. Queue details to temp_jobs folder for final async API polling
-                    const jobsDir = path.join(__dirname, '..', 'temp_jobs');
-                    if (!fs.existsSync(jobsDir)) {
-                        fs.mkdirSync(jobsDir, { recursive: true });
-                    }
-                    fs.writeFileSync(path.join(jobsDir, `job_${trainingId}.json`), JSON.stringify({
+                    // 3. Queue details to in-memory queue for final async API polling
+                    submittedJobs.push({
                         name: trainingName,
                         id: trainingId,
                         token: authToken
-                    }, null, 2));
+                    });
 
                     console.log(`[Queue] Queued job: ${trainingName} (ID: ${trainingId}) for batch API verification.`);
                 });
@@ -163,33 +150,21 @@ test.describe('My Training Module - Multi-Model E2E Suite', () => {
         // Extend timeout for batch verification
         test.setTimeout(1200000); // 20 minutes
 
-        const jobsDir = path.join(__dirname, '..', 'temp_jobs');
-        if (!fs.existsSync(jobsDir)) {
+        if (submittedJobs.length === 0) {
             console.log('[API POLL] No submitted jobs found to verify.');
             return;
         }
 
-        const files = fs.readdirSync(jobsDir).filter(f => f.endsWith('.json'));
-        const jobs = files.map(f => {
-            const content = fs.readFileSync(path.join(jobsDir, f), 'utf-8');
-            return JSON.parse(content);
-        });
+        console.log(`[API POLL] Starting batch verification of ${submittedJobs.length} training jobs...`);
 
-        if (jobs.length === 0) {
-            console.log('[API POLL] No submitted jobs found to verify.');
-            return;
-        }
-
-        console.log(`[API POLL] Starting batch verification of ${jobs.length} training jobs...`);
-        
         const apiContext = await playwrightRequest.newContext({
             ignoreHTTPSErrors: true
         });
 
         const results: { name: string; id: number; status: string }[] = [];
-        
+
         // Poll all jobs in parallel
-        const pollPromises = jobs.map(async (job) => {
+        const pollPromises = submittedJobs.map(async (job) => {
             try {
                 const status = await TrainingApiHelper.pollTrainingStatus(
                     apiContext,
@@ -209,13 +184,6 @@ test.describe('My Training Module - Multi-Model E2E Suite', () => {
 
         await Promise.all(pollPromises);
         await apiContext.dispose();
-
-        // Clean up temp folder
-        try {
-            fs.rmSync(jobsDir, { recursive: true, force: true });
-        } catch (e) {
-            // Ignore clean up errors
-        }
 
         console.log('\n================ BATCH TRAINING RESULTS ================');
         console.table(results);

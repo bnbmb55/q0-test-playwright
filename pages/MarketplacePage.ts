@@ -27,13 +27,13 @@ export class MarketplacePage {
         await this.filtersButton.click();
         await this.page.getByRole('button', { name: taskOrProvider, exact: false }).click();
         await this.applyFiltersButton.click();
-        await this.page.waitForLoadState('networkidle');
+        await expect(this.modelCards.first()).toBeVisible({ timeout: 15000 });
     }
 
     async clearFilters() {
         await this.filtersButton.click();
         await this.clearAllButton.last().click();
-        await this.page.waitForLoadState('networkidle');
+        await expect(this.modelCards.first()).toBeVisible({ timeout: 15000 });
     }
 
     async sortBy(option: 'New' | 'Popular') {

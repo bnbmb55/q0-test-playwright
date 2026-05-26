@@ -1,5 +1,6 @@
 import { test, expect } from '../fixtures/base';
 import { AppConfig } from '../utils/config';
+import { Environment } from '../utils/environment';
 
 test.describe('My Training - Validation, Security and Edge Case Suite', () => {
     test.setTimeout(180000); // 3 minutes total timeout
@@ -13,7 +14,7 @@ test.describe('My Training - Validation, Security and Edge Case Suite', () => {
     test.describe('Authenticated Validation and Edge Scenarios', () => {
         test.beforeEach(async ({ loginPage, trainingPage }) => {
             await loginPage.navigate();
-            await loginPage.login('vikasnew.rathod@gmail.com', 'Ganesha@5050');
+            await loginPage.login(Environment.Q0_TRAINING_EMAIL, Environment.Q0_TRAINING_PASSWORD);
             await trainingPage.navigateToMyTrainings();
         });
 
@@ -49,9 +50,11 @@ test.describe('My Training - Validation, Security and Edge Case Suite', () => {
             await trainingPage.selectDatasetBtn.click();
 
             // Target the dataset inside the modal. Use the specific name or fallback to modal rows/elements.
-            const datasetOption = page.getByText('DATASET-Llama3-1-8B-GCP-SFT').first()
-                .or(page.locator('tbody tr').first())
-                .or(page.locator('div[role="dialog"] tbody tr').first());
+            const datasetOption = page.getByText('DATASET-Llama3-1-8B-GCP-SFT')
+                .or(page.locator('div[role="dialog"] button').filter({ hasText: /Created by/i }))
+                .or(page.locator('tbody tr'))
+                .or(page.locator('div[role="dialog"] tbody tr'))
+                .first();
 
             await datasetOption.waitFor({ state: 'visible', timeout: 15000 });
             await datasetOption.click();
@@ -80,26 +83,23 @@ test.describe('My Training - Validation, Security and Edge Case Suite', () => {
 
             // Verify no training named "CANCEL-TEST-TRAINING" is present in the list
             await trainingPage.searchTraining('CANCEL-TEST-TRAINING');
-            await page.waitForTimeout(1500);
             const row = page.getByRole('row', { name: /CANCEL-TEST-TRAINING/i });
-            await expect(row).toBeHidden();
+            await expect(row).toBeHidden({ timeout: 10000 });
         });
 
         test('TC-TRAIN-21: Verify search and filter functionality in My Trainings list', async ({ trainingPage, page }) => {
             // Search for non-existent training
             const nonExistentName = `NONEXISTENT-TRAINING-${Date.now()}`;
             await trainingPage.searchTraining(nonExistentName);
-            await page.waitForTimeout(1500);
 
             // Assert that the list doesn't display any row matching the query
-            await expect(page.getByRole('row', { name: new RegExp(nonExistentName, 'i') })).toBeHidden();
+            await expect(page.getByRole('row', { name: new RegExp(nonExistentName, 'i') })).toBeHidden({ timeout: 10000 });
 
             // Reset search input
             await trainingPage.searchInput.click();
             await trainingPage.searchInput.press('ControlOrMeta+a');
             await trainingPage.searchInput.press('Backspace');
             await trainingPage.searchInput.press('Enter');
-            await page.waitForTimeout(1500);
         });
     });
 });

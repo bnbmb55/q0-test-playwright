@@ -39,7 +39,8 @@ export class RegistrationPage {
     async step1FillEmailAndProceed(email: string) {
         await this.emailInput.fill(email);
         await this.emailInput.press('Tab');
-        await this.nextButton.click({ force: true });
+        await expect(this.nextButton).toBeEnabled({ timeout: 10000 });
+        await this.nextButton.click();
         await expect(this.createAccountHeading).toBeVisible({ timeout: 10000 });
     }
 
@@ -49,18 +50,11 @@ export class RegistrationPage {
         await this.confirmPasswordInput.fill(password);
         await this.confirmPasswordInput.press('Tab');
         
-        // Stabilization: Click away and wait to trigger frontend validation
-        await this.createAccountHeading.click({ force: true });
-        await this.page.waitForTimeout(1000);
+        // Stabilization: Click away to trigger frontend validation
+        await this.createAccountHeading.click();
 
-        // If still disabled, try one more Tab cycle
-        if (await this.nextButton.isDisabled()) {
-            await this.passwordInput.focus();
-            await this.passwordInput.press('Tab');
-            await this.confirmPasswordInput.focus();
-            await this.confirmPasswordInput.press('Tab');
-            await this.page.waitForTimeout(1000);
-        }
+        // Auto-retry until Next button becomes enabled (replaces static sleep + isDisabled check)
+        await expect(this.nextButton).toBeEnabled({ timeout: 10000 });
     }
 
     async step1SubmitAndGetLink() {
@@ -69,7 +63,7 @@ export class RegistrationPage {
         );
 
         await expect(this.nextButton).toBeEnabled({ timeout: 30000 });
-        await this.nextButton.click({ force: true });
+        await this.nextButton.click();
 
         const [response] = await Promise.all([
             signupResponsePromise,
@@ -89,15 +83,16 @@ export class RegistrationPage {
     }
 
     async completeOrganisationRegistration(orgName: string, name: string, mobile: string) {
-        await this.organisationButton.click({ force: true });
-        await this.orgDropdown.click({ force: true });
-        await this.page.getByRole('option', { name: 'New' }).click({ force: true });
+        await expect(this.organisationButton).toBeVisible({ timeout: 10000 });
+        await this.organisationButton.click();
+        await this.orgDropdown.click();
+        await this.page.getByRole('option', { name: 'New' }).click();
         await this.orgNameInput.fill(orgName);
         await this.nameInput.fill(name);
         await this.mobileInput.fill(mobile);
         await this.mobileInput.press('Tab');
 
-        await expect(this.signUpToQzeroButton).toBeEnabled();
+        await expect(this.signUpToQzeroButton).toBeEnabled({ timeout: 10000 });
         await this.signUpToQzeroButton.click();
         await expect(this.page.getByRole('heading', { name: 'Your account has been created' })).toBeVisible({ timeout: 30000 });
     }

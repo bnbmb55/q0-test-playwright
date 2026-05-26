@@ -65,22 +65,28 @@ export class AuthHelper {
         }
 
         // 3. Fallback: Catch token from outgoing API requests
-        let interceptedToken = '';
-        const requestHandler = (request: any) => {
-            const authHeader = request.headers()['authorization'];
-            if (authHeader && authHeader.startsWith('Bearer ')) {
-                interceptedToken = authHeader;
-            }
-        };
+        try {
+            const interceptedToken = await new Promise<string>((resolve, reject) => {
+                const timeoutId = setTimeout(() => {
+                    page.off('request', requestHandler);
+                    reject(new Error('Authentication token could not be extracted from storage, cookies, or network headers.'));
+                }, 5000);
 
-        page.on('request', requestHandler);
-        await page.waitForTimeout(1500);
-        page.off('request', requestHandler);
+                function requestHandler(request: any) {
+                    const authHeader = request.headers()['authorization'];
+                    if (authHeader && authHeader.startsWith('Bearer ')) {
+                        clearTimeout(timeoutId);
+                        page.off('request', requestHandler);
+                        resolve(authHeader);
+                    }
+                }
 
-        if (!interceptedToken) {
+                page.on('request', requestHandler);
+            });
+
+            return interceptedToken;
+        } catch (e: any) {
             throw new Error('Authentication token could not be extracted from storage, cookies, or network headers.');
         }
-
-        return interceptedToken;
     }
 }

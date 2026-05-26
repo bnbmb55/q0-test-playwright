@@ -1,5 +1,6 @@
 import { test, expect } from '../fixtures/base';
 import { AppConfig } from '../utils/config';
+import { Environment } from '../utils/environment';
 
 test.describe('Marketplace Functionality', () => {
     test.describe.configure({ mode: 'serial' });
@@ -7,7 +8,7 @@ test.describe('Marketplace Functionality', () => {
 
     test.beforeEach(async ({ loginPage, dashboardPage, marketplacePage }) => {
         await loginPage.navigate();
-        await loginPage.login('patil.tanmay9900@gmail.com', 'Tanmay@123');
+        await loginPage.login(Environment.Q0_EMAIL, Environment.Q0_PASSWORD);
         await dashboardPage.verifyDashboardVisible();
 
         const marketplaceLink = dashboardPage.page.getByRole('button', { name: /Marketplace/ }).first();
@@ -71,7 +72,7 @@ test.describe('Marketplace Functionality', () => {
 
         const marketplaceNav = marketplacePage.page.locator('nav, .sidebar, .navigation').getByText('Marketplace', { exact: true }).first();
         await expect(marketplaceNav).toBeVisible({ timeout: 15000 });
-        await marketplaceNav.click({ force: true });
+        await marketplaceNav.click();
 
         await expect(marketplacePage.page).toHaveURL(/marketplace/, { timeout: 30000 });
     });
@@ -89,7 +90,8 @@ test.describe('Marketplace Functionality', () => {
 
         for (let i = 0; i < 3; i++) {
             await marketplacePage.page.evaluate(() => window.scrollBy(0, 2000));
-            await marketplacePage.page.waitForTimeout(1000);
+            // Wait for new model cards to appear instead of using a static timeout
+            await marketplacePage.page.waitForLoadState('domcontentloaded');
         }
 
         const newCardCount = await marketplacePage.page.locator('h3').count();

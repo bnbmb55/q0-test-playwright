@@ -1,8 +1,8 @@
 import { test, expect } from '../fixtures/base';
 import { DataGenerator } from '../utils/dataGenerator';
+import { Environment } from '../utils/environment';
 
 test.describe('Login Functionality', () => {
-    test.describe.configure({ mode: 'serial' });
     test.setTimeout(60000);
 
     test.beforeEach(async ({ loginPage }) => {
@@ -10,7 +10,7 @@ test.describe('Login Functionality', () => {
     });
 
     test('TC-LOGIN-01: Verify successful login with valid credentials & session persistence', async ({ loginPage, dashboardPage }) => {
-        await loginPage.login('patil.tanmay9900@gmail.com', 'Tanmay@123');
+        await loginPage.login(Environment.Q0_EMAIL, Environment.Q0_PASSWORD);
         await dashboardPage.verifyDashboardVisible();
         await loginPage.page.reload();
         await expect(loginPage.page.getByText(/Dashboard|Marketplace|Playground/i).first()).toBeVisible({ timeout: 30000 });
@@ -23,14 +23,14 @@ test.describe('Login Functionality', () => {
     });
 
     test('TC-LOGIN-03: Verify password visibility toggle functionality', async ({ loginPage }) => {
-        await loginPage.passwordInput.fill('Ganesha@5050');
+        await loginPage.passwordInput.fill('TestPassword@123');
         await expect(loginPage.passwordInput).toHaveAttribute('type', 'password');
         await loginPage.page.locator('form svg').click();
         await expect(loginPage.passwordInput).toHaveAttribute('type', 'text');
     });
 
     test('TC-LOGIN-04: Verify error message for incorrect password', async ({ loginPage }) => {
-        await loginPage.login('patil.tanmay9900@gmail.com', 'WrongPassword123');
+        await loginPage.login(Environment.Q0_EMAIL, 'WrongPassword123');
         await expect(loginPage.page.getByText('Email or password is incorrect')).toBeVisible();
     });
 
@@ -53,15 +53,16 @@ test.describe('Login Functionality', () => {
 
     test('TC-LOGIN-08: Verify error messages for incomplete credentials', async ({ loginPage }) => {
         // Case 1: Empty email
+        await loginPage.emailInput.focus();
         await loginPage.emailInput.clear();
-        await loginPage.passwordInput.fill('Password123');
-        await loginPage.signInButton.click({ force: true });
+        await loginPage.passwordInput.focus(); // Focus password field to trigger blur validation on email
         await expect(loginPage.page.getByText(/Email is required|Please enter a Correct email/i)).toBeVisible();
 
         // Case 2: Empty password
         await loginPage.emailInput.fill('test@example.com');
+        await loginPage.passwordInput.focus();
         await loginPage.passwordInput.clear();
-        await loginPage.signInButton.click({ force: true });
+        await loginPage.emailInput.focus(); // Focus email field to trigger blur validation on password
         await expect(loginPage.page.getByText(/Password is required|Password cannot be empty/i)).toBeVisible();
     });
 

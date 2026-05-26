@@ -53,7 +53,7 @@ test.describe('Registration Scenarios', () => {
         await loginPage.navigate();
         await loginPage.goToSignUp();//added cmnt
         await registrationPage.emailInput.fill('patil.tanmay9900@gmail.com');
-        await registrationPage.nextButton.click({ force: true });
+        await registrationPage.nextButton.click();
         await expect(registrationPage.page.getByText(/An account with this email/i)).toBeVisible();
     });
 
@@ -92,7 +92,7 @@ test.describe('Registration Scenarios', () => {
         const link = await registrationPage.step1SubmitAndGetLink();
 
         await registrationPage.page.goto(link);
-        await registrationPage.signUpToQzeroButton.click({ force: true });
+        await registrationPage.signUpToQzeroButton.click();
 
         await expect(registrationPage.page.getByText(/Name is required|enter name/i)).toBeVisible();
         await expect(registrationPage.page.getByText(/Mobile number is required|enter mobile/i)).toBeVisible();

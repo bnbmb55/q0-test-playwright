@@ -22,7 +22,7 @@ export class LoginPage {
 
     async navigate() {
         await this.page.goto(AppConfig.paths.signIn);
-        await this.page.waitForLoadState('networkidle');
+        await this.emailInput.waitFor({ state: 'visible', timeout: 15000 });
     }
 
     async login(email: string, password: string) {

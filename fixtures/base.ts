@@ -5,6 +5,8 @@ import { DashboardPage } from '../pages/DashboardPage';
 import { ProfilePage } from '../pages/ProfilePage';
 import { MarketplacePage } from '../pages/MarketplacePage';
 import { TrainingPage } from '../pages/TrainingPage';
+import { SecretsPage } from '../pages/SecretsPage';
+import { ReporterHelper } from '../utils/reporterHelper';
 
 // Define the types for our fixtures
 type MyFixtures = {
@@ -14,10 +16,39 @@ type MyFixtures = {
     profilePage: ProfilePage;
     marketplacePage: MarketplacePage;
     trainingPage: TrainingPage;
+    secretsPage: SecretsPage;
+    reporterHelper: ReporterHelper;
 };
 
 // Extend the base test with our new fixtures
 export const test = base.extend<MyFixtures>({
+    reporterHelper: async ({ page }, use, testInfo) => {
+        const helper = new ReporterHelper(page, testInfo);
+        await use(helper);
+    },
+    page: async ({ page }, use, testInfo) => {
+        const originalGoto = page.goto.bind(page);
+        let firstGoto = true;
+        page.goto = async (url, options) => {
+            const result = await originalGoto(url, options);
+            if (firstGoto) {
+                firstGoto = false;
+                // Wait for page to load and take start of test screenshot
+                try {
+                    await page.waitForLoadState('domcontentloaded').catch(() => {});
+                    const screenshot = await page.screenshot({ fullPage: false });
+                    await testInfo.attach('[START] Start of test navigation', {
+                        body: screenshot,
+                        contentType: 'image/png'
+                    });
+                } catch (e) {
+                    console.error('Failed to capture start of test screenshot:', e);
+                }
+            }
+            return result;
+        };
+        await use(page);
+    },
     loginPage: async ({ page }, use) => {
         await use(new LoginPage(page));
     },
@@ -35,6 +66,9 @@ export const test = base.extend<MyFixtures>({
     },
     trainingPage: async ({ page }, use) => {
         await use(new TrainingPage(page));
+    },
+    secretsPage: async ({ page }, use) => {
+        await use(new SecretsPage(page));
     },
 });
 

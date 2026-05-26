@@ -174,26 +174,28 @@ export class TrainingPage {
             // Selection part - using regex for robustness
             const escaped = targetType.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
             const targetRegex = new RegExp(escaped, 'i');
-            const option = this.page.getByRole('option', { name: targetRegex }).or(this.page.getByText(targetRegex)).first();
+            const option = this.page.getByRole('option', { name: targetRegex })
+                .or(this.page.getByRole('listbox').getByText(targetRegex))
+                .first();
             await option.waitFor({ state: 'visible', timeout: 10000 });
-            await option.click({ force: true });
+            await option.click();
 
             // Optional: Select Distribution Type (DDP/DeepSpeed) - only if not already handled
             if (distributionType && !isCombinedDropdown) {
                 // Wait for and click the Distribution Type combobox
                 const distCombobox = this.page.getByRole('combobox').filter({ hasText: /Distribution/i });
                 await distCombobox.waitFor({ state: 'visible', timeout: 15000 });
-                await distCombobox.click({ force: true });
+                await distCombobox.click();
 
                 if (distributionType === 'DDP') {
-                    await this.page.getByText('DDP (Distributed Data').click({ force: true });
+                    await this.page.getByText('DDP (Distributed Data').click();
                 } else if (distributionType === 'DeepSpeed') {
                     // Handle potential DDP default
                     const ddpSelected = this.page.getByRole('combobox').filter({ hasText: 'DDP (Distributed Data' });
                     if (await ddpSelected.isVisible()) {
-                        await ddpSelected.click({ force: true });
+                        await ddpSelected.click();
                     }
-                    await this.page.getByLabel('DeepSpeed').locator('div').filter({ hasText: 'DeepSpeed' }).click({ force: true });
+                    await this.page.getByLabel('DeepSpeed').locator('div').filter({ hasText: 'DeepSpeed' }).click();
                 }
             }
 
@@ -246,12 +248,9 @@ export class TrainingPage {
                 } else {
                     console.log(`Secret "${params.secret}" not found in listing! Redirecting to secrets from sidebar...`);
 
-                    await this.secretDropdown.click();
-                    await this.page.waitForTimeout(500);
+                    await this.page.keyboard.press('Escape');
                     await this.page.getByRole('button', { name: 'Back' }).click();
-                    await this.page.waitForTimeout(500);
-                    await this.secretsMenu.click({ force: true });
-                    await this.page.waitForLoadState('networkidle');
+                    await this.secretsMenu.click();
 
                     const createBtn = this.createNewSecretBtn.or(this.createSecretBtn);
                     await createBtn.first().waitFor({ state: 'visible', timeout: 15000 });
@@ -295,8 +294,7 @@ export class TrainingPage {
                     await this.page.keyboard.insertText(params.secretConfig || JSON.stringify(defaultSecretObj, null, 2));
 
                     await this.createSecretBtn.click();
-
-                    await this.page.waitForTimeout(2000);
+                    await this.createSecretBtn.waitFor({ state: 'hidden', timeout: 10000 }).catch(() => {});
 
                     requiresRestart = true;
                     return;
@@ -323,7 +321,7 @@ export class TrainingPage {
     async configureEvaluation(autoSplit: boolean = true) {
         await test.step('Configure Evaluation', async () => {
             // First click label to expand/enable maybe? As per script: await page.locator('label').click();
-            await this.page.locator('label').first().click({ force: true });
+            await this.page.locator('label').first().click();
             if (autoSplit) {
                 await this.autoSplitBtn.click();
             }
@@ -361,9 +359,9 @@ export class TrainingPage {
     async configureOptionsAndSubmit(quantization: 'AWQ' | 'F16' = 'AWQ') {
         await test.step(`Configure Options and Submit: ${quantization}`, async () => {
             if (quantization === 'AWQ') {
-                await this.awqBtn.click({ force: true });
+                await this.awqBtn.click();
             } else {
-                await this.f16Btn.click({ force: true });
+                await this.f16Btn.click();
             }
 
             const responsePromise = this.page.waitForResponse(response =>
@@ -448,7 +446,7 @@ export class TrainingPage {
                     // Ignore elements rendering/missing exceptions during loading transitions
                 }
 
-                await this.page.waitForTimeout(interval);
+                await new Promise(resolve => setTimeout(resolve, interval));
             }
 
             throw new Error(`Training did not reach expected state: ${expectedState} within ${timeout / 1000} seconds.`);
@@ -495,8 +493,6 @@ export class TrainingPage {
             await this.searchInput.click();
             await this.searchInput.fill(name);
             await this.page.keyboard.press('Enter');
-            // Wait for list to filter
-            await this.page.waitForTimeout(1000);
         });
     }
 

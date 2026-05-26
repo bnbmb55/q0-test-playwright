@@ -1,5 +1,6 @@
 import { test, expect } from '../fixtures/base';
 import { AppConfig } from '../utils/config';
+import { Environment } from '../utils/environment';
 
 test.describe('Dashboard Functionality', () => {
     test.describe.configure({ mode: 'serial' });
@@ -7,7 +8,7 @@ test.describe('Dashboard Functionality', () => {
 
     test('TC-DB-01: Verify New User Dashboard (Getting Started)', async ({ loginPage, dashboardPage }) => {
         await loginPage.navigate();
-        await loginPage.login('aadita.shirsat@yahoo.com', 'Ganesha@5050');
+        await loginPage.login(Environment.Q0_NEW_USER_EMAIL, Environment.Q0_NEW_USER_PASSWORD);
         await dashboardPage.verifyDashboardVisible();
 
         await expect(dashboardPage.page.getByText(/Getting Started|Explore/i).first()).toBeVisible({ timeout: 15000 });
@@ -16,7 +17,7 @@ test.describe('Dashboard Functionality', () => {
 
     test('TC-DB-02: Verify Existing User Dashboard (Overview & Active Models)', async ({ loginPage, dashboardPage }) => {
         await loginPage.navigate();
-        await loginPage.login('patil.tanmay9900@gmail.com', 'Tanmay@123');
+        await loginPage.login(Environment.Q0_EMAIL, Environment.Q0_PASSWORD);
         await dashboardPage.verifyDashboardVisible();
 
         await expect(dashboardPage.page.getByText(/Overview|My Models|Recent Trainings/i).first()).toBeVisible({ timeout: 30000 });
@@ -25,7 +26,7 @@ test.describe('Dashboard Functionality', () => {
 
     test('TC-DB-03: Verify sidebar navigation links', async ({ loginPage, dashboardPage }) => {
         await loginPage.navigate();
-        await loginPage.login('patil.tanmay9900@gmail.com', 'Tanmay@123');
+        await loginPage.login(Environment.Q0_EMAIL, Environment.Q0_PASSWORD);
         await dashboardPage.verifyDashboardVisible();
 
         await expect(dashboardPage.page.getByText('Marketplace', { exact: true })).toBeVisible({ timeout: 30000 });
@@ -35,7 +36,7 @@ test.describe('Dashboard Functionality', () => {
 
     test('TC-DB-04: Verify User Profile menu options', async ({ loginPage, dashboardPage }) => {
         await loginPage.navigate();
-        await loginPage.login('patil.tanmay9900@gmail.com', 'Tanmay@123');
+        await loginPage.login(Environment.Q0_EMAIL, Environment.Q0_PASSWORD);
         await dashboardPage.verifyDashboardVisible();
 
         await dashboardPage.page.getByRole('button', { name: /Tanmay Patil/i }).click();
@@ -51,7 +52,7 @@ test.describe('Dashboard Functionality', () => {
 
     test('TC-DB-06: Verify explicit Sign Out functionality', async ({ loginPage, dashboardPage }) => {
         await loginPage.navigate();
-        await loginPage.login('patil.tanmay9900@gmail.com', 'Tanmay@123');
+        await loginPage.login(Environment.Q0_EMAIL, Environment.Q0_PASSWORD);
         await dashboardPage.verifyDashboardVisible();
         await dashboardPage.signOut('Tanmay Patil');
     });
