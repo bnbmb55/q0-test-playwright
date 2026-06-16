@@ -78,7 +78,7 @@ export default class CustomReporter implements Reporter {
 
             const project = test.parent.project();
             const browser = project ? project.name : 'chromium';
-            const baseURL = project?.use?.baseURL || this.config.use?.baseURL || 'https://ui-uat.q0.dev';
+            const baseURL = project?.use?.baseURL || this.config.use?.baseURL || 'https://ui-beta.q0.dev';
             const environment = this.detectEnvironment(baseURL);
 
             const steps = lastResult ? this.processSteps(lastResult.steps) : [];
@@ -256,11 +256,12 @@ export default class CustomReporter implements Reporter {
 
     private detectEnvironment(baseURL: string): string {
         const url = baseURL.toLowerCase();
+        if (url.includes('beta')) return 'Beta';
         if (url.includes('uat')) return 'UAT';
         if (url.includes('dev')) return 'Development';
         if (url.includes('staging')) return 'Staging';
         if (url.includes('prod') || url.includes('q0.dev')) return 'Production';
-        return 'UAT';
+        return 'Beta';
     }
 
     private formatDuration(ms: number): string {
@@ -1671,7 +1672,7 @@ export default class CustomReporter implements Reporter {
                         </div>
                         <div class="metric-row">
                             <span class="metric-label">Base URL</span>
-                            <span class="metric-value" style="font-size: 12px; color: var(--color-brand);">${data.environment === 'Production' ? 'https://ui.q0.dev' : 'https://ui-uat.q0.dev'}</span>
+                            <span class="metric-value" style="font-size: 12px; color: var(--color-brand);">${data.environment === 'Production' ? 'https://ui.q0.dev' : data.environment === 'Beta' ? 'https://ui-beta.q0.dev' : 'https://ui-uat.q0.dev'}</span>
                         </div>
                         <div class="metric-row">
                             <span class="metric-label">Primary Browser</span>

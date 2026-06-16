@@ -32,7 +32,7 @@ export default defineConfig({
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     /* Base URL to use in actions like `await page.goto('')`. */
-    baseURL: 'https://ui-uat.q0.dev',
+    baseURL: 'https://ui-beta.q0.dev',
 
     /* Per-action timeout (locator.click, fill, waitFor, etc.) */
     actionTimeout: 15_000,

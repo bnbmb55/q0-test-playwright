@@ -358,11 +358,17 @@ export class TrainingPage {
 
     async configureOptionsAndSubmit(quantization: 'AWQ' | 'F16' = 'AWQ') {
         await test.step(`Configure Options and Submit: ${quantization}`, async () => {
-            if (quantization === 'AWQ') {
-                await this.awqBtn.click();
-            } else {
-                await this.f16Btn.click();
-            }
+            const combobox = this.page.locator('div').filter({ hasText: /^Quantisation \*/ }).getByRole('combobox')
+                .or(this.page.getByRole('combobox'))
+                .first();
+            await combobox.click();
+            
+            const option = this.page.getByRole('option', { name: quantization, exact: true })
+                .or(this.page.getByRole('option', { name: new RegExp(`^${quantization}$`, 'i') }))
+                .or(this.page.getByText(quantization, { exact: true }))
+                .first();
+            await option.waitFor({ state: 'visible', timeout: 5000 });
+            await option.click({ force: true });
 
             const responsePromise = this.page.waitForResponse(response =>
                 response.url().includes('/Infer/api/model-training/save') && (response.status() === 200 || response.status() === 201),

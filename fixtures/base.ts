@@ -6,6 +6,7 @@ import { ProfilePage } from '../pages/ProfilePage';
 import { MarketplacePage } from '../pages/MarketplacePage';
 import { TrainingPage } from '../pages/TrainingPage';
 import { SecretsPage } from '../pages/SecretsPage';
+import { ModelPage } from '../pages/ModelPage';
 import { ReporterHelper } from '../utils/reporterHelper';
 
 // Define the types for our fixtures
@@ -17,6 +18,7 @@ type MyFixtures = {
     marketplacePage: MarketplacePage;
     trainingPage: TrainingPage;
     secretsPage: SecretsPage;
+    modelPage: ModelPage;
     reporterHelper: ReporterHelper;
 };
 
@@ -46,6 +48,9 @@ export const test = base.extend<MyFixtures>({
     },
     secretsPage: async ({ page }, use) => {
         await use(new SecretsPage(page));
+    },
+    modelPage: async ({ page }, use) => {
+        await use(new ModelPage(page));
     },
 });
 

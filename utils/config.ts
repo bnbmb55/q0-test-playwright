@@ -1,5 +1,5 @@
 export const AppConfig = {
-    baseUrl: 'https://ui-uat.q0.dev',
+    baseUrl: 'https://ui-beta.q0.dev',
     paths: {
         signIn: '/signin',
         signUp: '/signup',

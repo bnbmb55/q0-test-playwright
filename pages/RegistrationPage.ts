@@ -59,7 +59,8 @@ export class RegistrationPage {
 
     async step1SubmitAndGetLink() {
         const signupResponsePromise = this.page.waitForResponse(response =>
-            response.url().includes('/Infer/api/logins/signup') && response.status() === 200
+            response.url().includes('/Infer/api/logins/signup') && response.status() === 200,
+            { timeout: 30000 }
         );
 
         await expect(this.nextButton).toBeEnabled({ timeout: 30000 });
