@@ -99,8 +99,8 @@ export class TrainingPage {
         this.h100GpuBtn = page.getByRole('button', { name: /H100/i });
 
         // Step 7
-        this.awqBtn = page.getByRole('button', { name: 'AWQ' });
-        this.f16Btn = page.getByRole('button', { name: 'F16' });
+        this.awqBtn = page.getByRole('option', { name: 'AWQ', exact: true });
+        this.f16Btn = page.getByRole('option', { name: 'F16', exact: true });
         this.createTrainingSubmitBtn = page.getByRole('button', { name: 'Create Training' });
 
         // Search
@@ -240,13 +240,21 @@ export class TrainingPage {
                 await this.secretDropdown.click();
                 const secretOption = this.page.getByRole('option', { name: new RegExp(params.secret, 'i') }).first();
 
-                if (await secretOption.isVisible({ timeout: 5000 }).catch(() => false)) {
+                let hasSecret = false;
+                try {
+                    await secretOption.waitFor({ state: 'visible', timeout: 5000 });
+                    hasSecret = true;
+                } catch (e) {
+                    hasSecret = false;
+                }
+
+                if (hasSecret) {
                     console.log(`Secret "${params.secret}" found in training form secret listing. Using existing secret.`);
                     await secretOption.click();
                 } else {
                     console.log(`Secret "${params.secret}" not found in listing! Redirecting to secrets from sidebar...`);
 
-                    await this.secretDropdown.click();
+                    await this.secretDropdown.click().catch(() => {});
                     await this.page.waitForTimeout(500);
                     await this.page.getByRole('button', { name: 'Back' }).click();
                     await this.page.waitForTimeout(500);
@@ -306,7 +314,8 @@ export class TrainingPage {
                 if (params.source === 'Azure') {
                     await this.page.getByRole('textbox', { name: 'https://account.blob.core.' }).fill(params.path);
                 } else {
-                    await this.datasetPathInput.fill(params.path);
+                    const pathInput = this.page.getByPlaceholder('gs://bucket/path').or(this.datasetPathInput).first();
+                    await pathInput.fill(params.path);
                 }
 
                 // API Waiter for Dataset Save
@@ -360,10 +369,17 @@ export class TrainingPage {
 
     async configureOptionsAndSubmit(quantization: 'AWQ' | 'F16' = 'AWQ') {
         await test.step(`Configure Options and Submit: ${quantization}`, async () => {
-            if (quantization === 'AWQ') {
-                await this.awqBtn.click({ force: true });
-            } else {
-                await this.f16Btn.click({ force: true });
+            const dropdown = this.page.getByRole('combobox').filter({ hasText: /AWQ|F16/ });
+            await expect(dropdown).toBeVisible({ timeout: 15000 });
+
+            const currentValue = await dropdown.textContent();
+            if (currentValue && !currentValue.includes(quantization)) {
+                await dropdown.click();
+                if (quantization === 'AWQ') {
+                    await this.awqBtn.click();
+                } else {
+                    await this.f16Btn.click();
+                }
             }
 
             const responsePromise = this.page.waitForResponse(response =>

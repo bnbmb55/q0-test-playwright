@@ -1,7 +1,7 @@
 # Qzero Automation Test Plan
 
 ## Application Overview
-Comprehensive test plan for the Qzero application (https://ui-uat.q0.dev). This includes Login, Registration, and Dashboard functionalities.
+Comprehensive test plan for the Qzero application (https://ui-beta.q0.dev). This includes Login, Registration, and Dashboard functionalities.
 
 ## 1. Login Functionality (`tests/Login.spec.ts`)
 
@@ -55,7 +55,7 @@ Comprehensive test plan for the Qzero application (https://ui-uat.q0.dev). This 
 ---
 ## Test Execution Summary Report - Q0 Automation
 **Date**: 2026-05-06
-**Environment**: UAT (https://ui-uat.q0.dev)
+**Environment**: Beta (https://ui-beta.q0.dev)
 **Total Test Cases**: 25 (Standardized & Expanded)
 **Status**: Audit Completed. Suite is 100% compliant with requirements.
 

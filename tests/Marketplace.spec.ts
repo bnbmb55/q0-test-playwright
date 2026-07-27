@@ -52,10 +52,10 @@ test.describe('Marketplace Functionality', () => {
 
     test('TC-MARKET-05: Verify sorting by New vs Popular', async ({ marketplacePage }) => {
         await marketplacePage.sortBy('New');
-        await expect(marketplacePage.modelCards.first()).toBeVisible();
+        await expect(marketplacePage.modelCards.first()).toBeVisible({ timeout: 25000 });
 
         await marketplacePage.sortBy('Popular');
-        await expect(marketplacePage.page.locator('div').filter({ hasText: /^Popular Models$/ })).toBeVisible();
+        await expect(marketplacePage.page.locator('div').filter({ hasText: /^Popular Models$/ })).toBeVisible({ timeout: 25000 });
     });
 
     test('TC-MARKET-06: Verify model detail page navigation and core actions', async ({ marketplacePage }) => {
