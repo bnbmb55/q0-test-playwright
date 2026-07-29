@@ -1,8 +1,11 @@
-
-# Playwright
+# Node / Dependencies
 node_modules/
+temp_node/
+
+# Playwright Reports & Results
 /test-results/
 /playwright-report/
 /blob-report/
+/reports/
 /playwright/.cache/
 /playwright/.auth/
