@@ -1,13 +1,15 @@
 import { test, expect } from '../fixtures/base';
 import { AppConfig } from '../utils/config';
+import { getLoginCredentials } from '../utils/testConfig';
 
 test.describe('Dashboard Functionality', () => {
     test.describe.configure({ mode: 'serial' });
     test.setTimeout(90000);
 
     test('TC-DB-01: Verify New User Dashboard (Getting Started)', async ({ loginPage, dashboardPage }) => {
+        const credentials = getLoginCredentials('dashboard');
         await loginPage.navigate();
-        await loginPage.login('aadita.shirsat@yahoo.com', 'Ganesha@5050');
+        await loginPage.login(credentials.email, credentials.password);
         await dashboardPage.verifyDashboardVisible();
 
         await expect(dashboardPage.page.getByText(/Getting Started|Explore/i).first()).toBeVisible({ timeout: 15000 });

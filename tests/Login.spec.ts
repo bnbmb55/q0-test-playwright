@@ -1,5 +1,6 @@
 import { test, expect } from '../fixtures/base';
 import { DataGenerator } from '../utils/dataGenerator';
+import { getLoginCredentials } from '../utils/testConfig';
 
 test.describe('Login Functionality', () => {
     test.describe.configure({ mode: 'serial' });
@@ -10,7 +11,8 @@ test.describe('Login Functionality', () => {
     });
 
     test('TC-LOGIN-01: Verify successful login with valid credentials & session persistence', async ({ loginPage, dashboardPage }) => {
-        await loginPage.login('patil.tanmay9900@gmail.com', 'Tanmay@123');
+        const credentials = getLoginCredentials('login');
+        await loginPage.login(credentials.email, credentials.password);
         await dashboardPage.verifyDashboardVisible();
         await loginPage.page.reload();
         await expect(loginPage.page.getByText(/Dashboard|Marketplace|Playground/i).first()).toBeVisible({ timeout: 30000 });
@@ -30,7 +32,8 @@ test.describe('Login Functionality', () => {
     });
 
     test('TC-LOGIN-04: Verify error message for incorrect password', async ({ loginPage }) => {
-        await loginPage.login('patil.tanmay9900@gmail.com', 'WrongPassword123');
+        const credentials = getLoginCredentials('login');
+        await loginPage.login(credentials.email, 'WrongPassword123');
         await expect(loginPage.page.getByText('Email or password is incorrect')).toBeVisible();
     });
 
@@ -46,7 +49,7 @@ test.describe('Login Functionality', () => {
     });
 
     test('TC-LOGIN-07: Verify error when trying to login normally with Google account', async ({ loginPage }) => {
-        const googleUser = DataGenerator.GOOGLE_USER;
+        const googleUser = getLoginCredentials('google');
         await loginPage.login(googleUser.email, googleUser.password);
         await expect(loginPage.page.getByText(/please sign in with google|sign in using google/i)).toBeVisible({ timeout: 15000 });
     });
@@ -66,7 +69,7 @@ test.describe('Login Functionality', () => {
     });
 
     test('TC-LOGIN-09: Verify error when trying to login normally with GitHub account', async ({ loginPage }) => {
-        const githubUser = DataGenerator.GITHUB_USER;
+        const githubUser = getLoginCredentials('github');
         await loginPage.login(githubUser.email, githubUser.password);
         await expect(loginPage.page.getByText(/please sign in with github|sign in using github/i)).toBeVisible({ timeout: 15000 });
     });

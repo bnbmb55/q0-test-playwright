@@ -1,12 +1,14 @@
 import { test, expect } from '../fixtures/base';
 import { trainingModels } from '../data/trainingData';
+import { getLoginCredentials } from '../utils/testConfig';
 
 test.describe('My Training Module - Multi-Model E2E Suite', () => {
     test.setTimeout(300000);
     test.describe.configure({ retries: 1 });
     test.beforeEach(async ({ loginPage, trainingPage }) => {
+        const credentials = getLoginCredentials('training');
         await loginPage.navigate();
-        await loginPage.login('vikasnew.rathod@gmail.com', 'Ganesha@5050');
+        await loginPage.login(credentials.email, credentials.password);
         await trainingPage.navigateToMyTrainings();
     });
 

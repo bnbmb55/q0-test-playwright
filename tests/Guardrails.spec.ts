@@ -1,6 +1,7 @@
 import { test, expect } from '../fixtures/base';
 import { AppConfig } from '../utils/config';
 import { EncryptionAndDecryption } from '../utils/encryption';
+import { getLoginCredentials } from '../utils/testConfig';
 
 interface TargetModelConfig {
     name: string;
@@ -28,8 +29,9 @@ test.describe('Guardrails QA Test Suite - 8 Text Generation Models (5 Prompts Pe
 
     test.beforeEach(async ({ loginPage, dashboardPage, page }) => {
         // Step 1: Login & establish session
+        const credentials = getLoginCredentials('default');
         await loginPage.navigate();
-        await loginPage.login('devnewuser@gmail.com', 'Ganesha@5050');
+        await loginPage.login(credentials.email, credentials.password);
         await dashboardPage.verifyDashboardVisible();
 
         // Step 2: Intercept playground configuration
