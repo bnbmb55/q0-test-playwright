@@ -9,3 +9,6 @@ temp_node/
 /reports/
 /playwright/.cache/
 /playwright/.auth/
+
+# Large local archive
+Q0_Playwright_test.zip
