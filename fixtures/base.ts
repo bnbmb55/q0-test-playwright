@@ -5,6 +5,10 @@ import { DashboardPage } from '../pages/DashboardPage';
 import { ProfilePage } from '../pages/ProfilePage';
 import { MarketplacePage } from '../pages/MarketplacePage';
 import { TrainingPage } from '../pages/TrainingPage';
+import { PlaygroundPage } from '../pages/PlaygroundPage';
+import { getLoginCredentials, TestConfig } from '../utils/testConfig';
+
+type CredentialProfile = keyof typeof TestConfig.credentials;
 
 // Define the types for our fixtures
 type MyFixtures = {
@@ -14,6 +18,8 @@ type MyFixtures = {
     profilePage: ProfilePage;
     marketplacePage: MarketplacePage;
     trainingPage: TrainingPage;
+    playgroundPage: PlaygroundPage;
+    authenticate: (profile?: CredentialProfile) => Promise<void>;
 };
 
 // Extend the base test with our new fixtures
@@ -35,6 +41,17 @@ export const test = base.extend<MyFixtures>({
     },
     trainingPage: async ({ page }, use) => {
         await use(new TrainingPage(page));
+    },
+    playgroundPage: async ({ page }, use) => {
+        await use(new PlaygroundPage(page));
+    },
+    authenticate: async ({ loginPage, dashboardPage }, use) => {
+        await use(async (profile: CredentialProfile = 'default') => {
+            const credentials = getLoginCredentials(profile);
+            await loginPage.navigate();
+            await loginPage.login(credentials.email, credentials.password);
+            await dashboardPage.verifyDashboardVisible();
+        });
     },
 });
 

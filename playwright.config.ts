@@ -13,14 +13,13 @@ import { defineConfig, devices } from '@playwright/test';
  */
 export default defineConfig({
   testDir: './tests',
-  /* Run tests in files in parallel */
+  /* Independent browser contexts run concurrently; override with PW_WORKERS. */
   fullyParallel: true,
   /* Fail the build on CI if you accidentally left test.only in the source code. */
   forbidOnly: !!process.env.CI,
   /* Retry on failure */
   retries: 1,
-  /* Limit workers to 1 to prevent session conflicts with shared accounts */
-  workers: 1,
+  workers: Number(process.env.PW_WORKERS ?? (process.env.CI ? 2 : 3)),
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
   reporter: [
     ['line'],

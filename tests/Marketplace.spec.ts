@@ -1,14 +1,10 @@
 import { test, expect } from '../fixtures/base';
-import { AppConfig } from '../utils/config';
 
 test.describe('Marketplace Functionality', () => {
-    test.describe.configure({ mode: 'serial' });
     test.setTimeout(90000);
 
-    test.beforeEach(async ({ loginPage, dashboardPage, marketplacePage }) => {
-        await loginPage.navigate();
-        await loginPage.login('patil.tanmay9900@gmail.com', 'Tanmay@123');
-        await dashboardPage.verifyDashboardVisible();
+    test.beforeEach(async ({ authenticate, dashboardPage, marketplacePage }) => {
+        await authenticate();
 
         const marketplaceLink = dashboardPage.page.getByRole('button', { name: /Marketplace/ }).first();
         await expect(marketplaceLink).toBeVisible({ timeout: 15000 });

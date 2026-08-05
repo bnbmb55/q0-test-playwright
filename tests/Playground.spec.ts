@@ -1,126 +1,20 @@
 import { test, expect } from '../fixtures/base';
-import { AppConfig } from '../utils/config';
-import { EncryptionAndDecryption } from '../utils/encryption';
-import { getLoginCredentials } from '../utils/testConfig';
-import { playgroundScenarios, smokeScenarios } from '../data/playgroundScenarios';
-
-interface TargetModelConfig {
-    name: string;
-    displayName: string;
-}
-
-/**
- * 8 Target Text Generation Models as configured in Guardrails.spec.ts
- */
-const TEXT_GEN_MODELS: TargetModelConfig[] = [
-    { name: 'Llama3-1-8B', displayName: 'Llama 3.1 8B' },
-    { name: 'GPT-OSS-20B', displayName: 'GPT-OSS 20B' },
-    { name: 'DeepSeek-R1-Distill-Llama-70B', displayName: 'DeepSeek R1 70B' },
-    { name: 'Sarvam-m', displayName: 'Sarvam-M' },
-    { name: 'Qwen2.5-VL-72B-Instruct', displayName: 'Qwen2.5-VL-72B' },
-    { name: 'GPT-OSS-120B', displayName: 'GPT-OSS 120B' },
-    { name: 'Qwen3-14B', displayName: 'Qwen3-14B' },
-    { name: 'Moonlight-16B-A3B-Instruct', displayName: 'Moonlight-16B' }
-];
+import { kokoroTextToSpeechModel, textGenerationModels } from '../data/playground/models';
+import {
+    playgroundScenarios,
+    smokeScenarios,
+    smokeTextToAudioScenarios,
+    textToAudioScenarios,
+    TextToAudioScenario
+} from '../data/playgroundScenarios';
 
 test.describe('Playground QA Test Suite - All Text Generation Models (Hallucination, Positive & Negative Scenarios)', () => {
     test.setTimeout(900000); // 15 minutes timeout for whole suite
 
-    let activeApiModels: string[] = [];
-
-    test.beforeEach(async ({ loginPage, dashboardPage, page }) => {
-        // Step 1: Login & establish session
-        const credentials = getLoginCredentials('default');
-        await loginPage.navigate();
-        await loginPage.login(credentials.email, credentials.password);
-        await dashboardPage.verifyDashboardVisible();
-
-        // Step 2: Intercept playground configuration
-        const targetUrlPattern = /playground\/getdata/i;
-        const responsePromise = page.waitForResponse(
-            response => targetUrlPattern.test(response.url()) && response.status() === 200,
-            { timeout: 30000 }
-        ).catch(() => null);
-
-        // Step 3: Navigate directly to Playground
-        await page.goto(AppConfig.paths.playground);
-
-        // Step 4: Extract dynamic models list
-        if (responsePromise) {
-            const response = await responsePromise;
-            if (response) {
-                const responseData = await response.json().catch(() => null);
-                if (responseData && responseData.details) {
-                    const decryptedDetails = EncryptionAndDecryption.decryption(responseData.details);
-                    activeApiModels = [];
-                    const extractNames = (obj: any) => {
-                        if (!obj) return;
-                        if (Array.isArray(obj)) {
-                            obj.forEach(item => extractNames(item));
-                        } else if (typeof obj === 'object') {
-                            if (obj.modelName && typeof obj.modelName === 'string') {
-                                activeApiModels.push(obj.modelName.trim());
-                            } else if (obj.name && typeof obj.name === 'string' && (obj.id || obj.displayName || obj.provider)) {
-                                activeApiModels.push(obj.name.trim());
-                            } else {
-                                for (const key in obj) {
-                                    extractNames(obj[key]);
-                                }
-                            }
-                        }
-                    };
-                    extractNames(decryptedDetails);
-                }
-            }
-        }
+    test.beforeEach(async ({ authenticate, playgroundPage }) => {
+        await authenticate();
+        await playgroundPage.open();
     });
-
-    /**
-     * UI Model Selector Helper (equivalent to Guardrails.spec.ts pattern)
-     */
-    async function selectModel(page: any, targetModel: TargetModelConfig): Promise<boolean> {
-        const rawName = targetModel.name.trim();
-        const searchKeyword = rawName.split('/')[0].replace(/[-_]/g, ' ').split(' ')[0];
-        console.log(`\n==================================================`);
-        console.log(`[MODEL SELECT] Target: "${targetModel.displayName}" | Raw Name: "${rawName}"`);
-        console.log(`==================================================`);
-
-        try {
-            const modelTriggerBtn = page.getByRole('button', {
-                name: /Llama|GPT|Whisper|Kokoro|Surya|Paddle|Chandra|Stable|Gemma|DeepSeek|Sarvam|Qwen|Kimi|Moonlight/i
-            }).first();
-
-            await expect(modelTriggerBtn).toBeVisible({ timeout: 15000 });
-            await modelTriggerBtn.click();
-            await page.waitForTimeout(500);
-
-            const searchInput = page.getByPlaceholder('Search model');
-            if (await searchInput.isVisible({ timeout: 3000 })) {
-                await searchInput.fill(rawName);
-                await page.waitForTimeout(500);
-
-                const optionLocator = page.locator('[role="dialog"]').getByText(new RegExp(rawName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')).first();
-                if (await optionLocator.isVisible({ timeout: 3000 })) {
-                    await optionLocator.click();
-                } else {
-                    await searchInput.fill(searchKeyword);
-                    await page.waitForTimeout(500);
-                    const fallbackOption = page.locator('[role="dialog"]').getByText(new RegExp(searchKeyword, 'i')).first();
-                    await expect(fallbackOption).toBeVisible({ timeout: 5000 });
-                    await fallbackOption.click();
-                }
-            }
-
-            const activeModelBtn = page.getByRole('button', { name: new RegExp(searchKeyword, 'i') }).first();
-            await expect(activeModelBtn).toBeVisible({ timeout: 10000 });
-            console.log(`[MODEL SELECT SUCCESS] "${targetModel.displayName}" is active in UI.`);
-            return true;
-        } catch (err: any) {
-            console.warn(`[MODEL SELECT WARN] Could not select model "${targetModel.displayName}": ${err.message}`);
-            await page.keyboard.press('Escape').catch(() => {});
-            return false;
-        }
-    }
 
     /**
      * Submit Text Prompt & Evaluate Response and Performance Metrics
@@ -275,17 +169,48 @@ test.describe('Playground QA Test Suite - All Text Generation Models (Hallucinat
         }
     }
 
+    async function generateAndEvaluateAudio(page: any, playgroundPage: any, scenario: TextToAudioScenario) {
+        await page.keyboard.press('Escape').catch(() => {});
+
+        await playgroundPage.fillPrompt(scenario.text);
+        await playgroundPage.selectTextToSpeechOption(0, scenario.language);
+        await playgroundPage.selectTextToSpeechOption(1, scenario.voice);
+
+        const startTime = Date.now();
+        const response = await playgroundPage.generateTextToSpeech();
+        const inferenceTimeMs = Date.now() - startTime;
+        expect(response.status(), `TTS inference failed for ${scenario.name}`).toBe(200);
+        expect(inferenceTimeMs).toBeGreaterThan(0);
+
+        const body = await response.body();
+        expect(body.length, 'TTS inference response must not be empty').toBeGreaterThan(0);
+
+        // The Playground renders TTS output as a generated-file card, not an HTML audio tag.
+        await expect(page.getByText(/^Generated Audio\.(wav|mp3)$/i).last()).toBeVisible({ timeout: 15000 });
+        await expect(page.getByRole('button', { name: /^play$/i }).last()).toBeVisible({ timeout: 15000 });
+        await expect(page.getByText(/^Inference Time:/i).last()).toBeVisible({ timeout: 15000 });
+
+        const responseText = body.toString('utf8');
+        const displayedInputTokens = await page.getByText(/^Input Tokens:/i).last().textContent();
+        const displayedOutputSeconds = await page.getByText(/^Output Sec:/i).last().textContent();
+        const inputTokens = Number(response.headers()['x-input-tokens'] ?? displayedInputTokens?.match(/(\d+(?:\.\d+)?)/)?.[1] ?? responseText.match(/(?:num_)?input_tokens["':=\s]+(\d+)/i)?.[1]);
+        const outputSeconds = Number(displayedOutputSeconds?.match(/(\d+(?:\.\d+)?)/)?.[1]);
+        console.log(`[TTS RESULT] ${scenario.name} | Language: ${scenario.language} | Voice: ${scenario.voice} | Inference: ${inferenceTimeMs} ms | Input tokens: ${Number.isFinite(inputTokens) ? inputTokens : 'not reported'} | Output seconds: ${Number.isFinite(outputSeconds) ? outputSeconds : 'not reported'}`);
+        if (Number.isFinite(inputTokens)) expect(inputTokens).toBeGreaterThanOrEqual(0);
+        if (Number.isFinite(outputSeconds)) expect(outputSeconds).toBeGreaterThan(0);
+    }
+
     const scenariosToRun = (globalThis as typeof globalThis & { process?: { env?: Record<string, string | undefined> } }).process?.env?.PLAYWRIGHT_SMOKE === 'true'
         ? smokeScenarios
         : playgroundScenarios;
 
     // Parameterized test loop across all models
-    for (let i = 0; i < TEXT_GEN_MODELS.length; i++) {
-        const modelConfig = TEXT_GEN_MODELS[i];
+    for (let i = 0; i < textGenerationModels.length; i++) {
+        const modelConfig = textGenerationModels[i];
 
-        test.describe(`Model ${i + 1}/${TEXT_GEN_MODELS.length}: ${modelConfig.displayName}`, () => {
-            test(`TC-PLAYGROUND-01: Hallucination Evaluation (${scenariosToRun.filter((scenario) => scenario.category === 'hallucination').length} Prompts)`, async ({ page }) => {
-                const isSelected = await selectModel(page, modelConfig);
+        test.describe(`Model ${i + 1}/${textGenerationModels.length}: ${modelConfig.displayName}`, () => {
+            test(`TC-PLAYGROUND-01: Hallucination Evaluation (${scenariosToRun.filter((scenario) => scenario.category === 'hallucination').length} Prompts)`, async ({ page, playgroundPage }) => {
+                const isSelected = await playgroundPage.selectModel(modelConfig);
                 if (!isSelected) {
                     console.warn(`[SKIP] Model ${modelConfig.displayName} is not active or selectable.`);
                     return;
@@ -302,8 +227,8 @@ test.describe('Playground QA Test Suite - All Text Generation Models (Hallucinat
                 }
             });
 
-            test(`TC-PLAYGROUND-02: Positive Functional Scenarios (${scenariosToRun.filter((scenario) => scenario.category === 'positive').length} Prompts)`, async ({ page }) => {
-                const isSelected = await selectModel(page, modelConfig);
+            test(`TC-PLAYGROUND-02: Positive Functional Scenarios (${scenariosToRun.filter((scenario) => scenario.category === 'positive').length} Prompts)`, async ({ page, playgroundPage }) => {
+                const isSelected = await playgroundPage.selectModel(modelConfig);
                 if (!isSelected) {
                     console.warn(`[SKIP] Model ${modelConfig.displayName} is not active or selectable.`);
                     return;
@@ -320,8 +245,8 @@ test.describe('Playground QA Test Suite - All Text Generation Models (Hallucinat
                 }
             });
 
-            test(`TC-PLAYGROUND-03: Negative & Edge Case Scenarios (${scenariosToRun.filter((scenario) => scenario.category === 'negative').length} Prompts)`, async ({ page }) => {
-                const isSelected = await selectModel(page, modelConfig);
+            test(`TC-PLAYGROUND-03: Negative & Edge Case Scenarios (${scenariosToRun.filter((scenario) => scenario.category === 'negative').length} Prompts)`, async ({ page, playgroundPage }) => {
+                const isSelected = await playgroundPage.selectModel(modelConfig);
                 if (!isSelected) {
                     console.warn(`[SKIP] Model ${modelConfig.displayName} is not active or selectable.`);
                     return;
@@ -339,4 +264,24 @@ test.describe('Playground QA Test Suite - All Text Generation Models (Hallucinat
             });
         });
     }
+
+    const textToAudioScenariosToRun = (globalThis as typeof globalThis & { process?: { env?: Record<string, string | undefined> } }).process?.env?.PLAYWRIGHT_SMOKE === 'true'
+        ? smokeTextToAudioScenarios
+        : textToAudioScenarios;
+
+    test.describe(`Text-to-Audio Model: ${kokoroTextToSpeechModel.displayName}`, () => {
+        for (const category of ['hallucination', 'positive', 'negative'] as const) {
+            const scenarios = textToAudioScenariosToRun.filter((scenario) => scenario.category === category);
+            test(`TC-PLAYGROUND-TTS-${category.toUpperCase()}: ${category} scenarios (${scenarios.length})`, async ({ page, playgroundPage }) => {
+                const isSelected = await playgroundPage.selectModel(kokoroTextToSpeechModel);
+                expect(isSelected, `${kokoroTextToSpeechModel.displayName} must be selectable`).toBeTruthy();
+
+                for (const scenario of scenarios) {
+                    await test.step(`[${kokoroTextToSpeechModel.displayName}] ${scenario.name}`, async () => {
+                        await generateAndEvaluateAudio(page, playgroundPage, scenario);
+                    });
+                }
+            });
+        }
+    });
 });

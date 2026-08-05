@@ -1,14 +1,14 @@
 import { test, expect } from '../fixtures/base';
 import { trainingModels } from '../data/trainingData';
-import { getLoginCredentials } from '../utils/testConfig';
 
 test.describe('My Training Module - Multi-Model E2E Suite', () => {
     test.setTimeout(300000);
+    // These scenarios create and reuse shared datasets/secrets in the same tenant.
+    // Keep them sequential while independent UI modules run in parallel workers.
+    test.describe.configure({ mode: 'serial' });
     test.describe.configure({ retries: 1 });
-    test.beforeEach(async ({ loginPage, trainingPage }) => {
-        const credentials = getLoginCredentials('training');
-        await loginPage.navigate();
-        await loginPage.login(credentials.email, credentials.password);
+    test.beforeEach(async ({ authenticate, trainingPage }) => {
+        await authenticate('training');
         await trainingPage.navigateToMyTrainings();
     });
 

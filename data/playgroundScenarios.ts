@@ -4,6 +4,14 @@ export interface PlaygroundScenario {
   prompt: string;
 }
 
+export interface TextToAudioScenario {
+  name: string;
+  category: 'hallucination' | 'positive' | 'negative';
+  text: string;
+  language: string;
+  voice: string;
+}
+
 export const playgroundScenarios: PlaygroundScenario[] = [
   {
     name: 'hallucination-01',
@@ -85,3 +93,33 @@ export const playgroundScenarios: PlaygroundScenario[] = [
 export const smokeScenarios = playgroundScenarios.filter((scenario) =>
   ['hallucination-01', 'positive-01', 'negative-01'].includes(scenario.name)
 );
+
+/**
+ * Kokoro supports language-specific voices. Keep each voice paired with the
+ * language selected in the Playground so the request represents a valid TTS flow.
+ */
+export const textToAudioScenarios: TextToAudioScenario[] = [
+  {
+    name: 'tts-hallucination-01',
+    category: 'hallucination',
+    text: 'Wakanda is a fictional country in the Marvel universe.',
+    language: 'American English (en-US)',
+    voice: 'Heart (Female, American)'
+  },
+  {
+    name: 'tts-positive-01',
+    category: 'positive',
+    text: 'Welcome to the AI playground. Your audio is ready to play.',
+    language: 'American English (en-US)',
+    voice: 'Heart (Female, American)'
+  },
+  {
+    name: 'tts-negative-01',
+    category: 'negative',
+    text: 'sdjklfsd jklfsd jklsdf',
+    language: 'American English (en-US)',
+    voice: 'Heart (Female, American)'
+  }
+];
+
+export const smokeTextToAudioScenarios = textToAudioScenarios;

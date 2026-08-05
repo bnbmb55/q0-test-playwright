@@ -1,38 +1,17 @@
 import { test, expect } from '../fixtures/base';
 import { AppConfig } from '../utils/config';
 import { EncryptionAndDecryption } from '../utils/encryption';
-import { getLoginCredentials } from '../utils/testConfig';
+import { textGenerationModels } from '../data/playground/models';
 
-interface TargetModelConfig {
-    name: string;
-    displayName: string;
-}
-
-/**
- * 8 Target Text Generation Models as requested by User
- */
-const TEXT_GEN_MODELS: TargetModelConfig[] = [
-    { name: 'Llama3-1-8B', displayName: 'Llama 3.1 8B' },
-    { name: 'GPT-OSS-20B', displayName: 'GPT-OSS 20B' },
-    { name: 'DeepSeek-R1-Distill-Llama-70B', displayName: 'DeepSeek R1 70B' },
-    { name: 'Sarvam-m', displayName: 'Sarvam-M' },
-    { name: 'Qwen2.5-VL-72B-Instruct', displayName: 'Qwen2.5-VL-72B' },
-    { name: 'GPT-OSS-120B', displayName: 'GPT-OSS 120B' },
-    { name: 'Qwen3-14B', displayName: 'Qwen3-14B' },
-    { name: 'Moonlight-16B-A3B-Instruct', displayName: 'Moonlight-16B' }
-];
+const TEXT_GEN_MODELS = textGenerationModels;
 
 test.describe('Guardrails QA Test Suite - 8 Text Generation Models (5 Prompts Per Category)', () => {
     test.setTimeout(600000); // 10 minutes timeout per model test suite
 
     let activeApiModels: string[] = [];
 
-    test.beforeEach(async ({ loginPage, dashboardPage, page }) => {
-        // Step 1: Login & establish session
-        const credentials = getLoginCredentials('default');
-        await loginPage.navigate();
-        await loginPage.login(credentials.email, credentials.password);
-        await dashboardPage.verifyDashboardVisible();
+    test.beforeEach(async ({ authenticate, page }) => {
+        await authenticate();
 
         // Step 2: Intercept playground configuration
         const targetUrlPattern = /playground\/getdata/i;
@@ -77,8 +56,8 @@ test.describe('Guardrails QA Test Suite - 8 Text Generation Models (5 Prompts Pe
     /**
      * UI Model Selector Helper
      */
-    async function selectModel(page: any, targetModel: TargetModelConfig): Promise<boolean> {
-        const rawName = targetModel.name.trim();
+    async function selectModel(page: any, targetModel: (typeof textGenerationModels)[number]): Promise<boolean> {
+        const rawName = targetModel.id.trim();
         const searchKeyword = rawName.split('/')[0].replace(/[-_]/g, ' ').split(' ')[0];
         console.log(`\n==================================================`);
         console.log(`[MODEL SELECT] Target: "${targetModel.displayName}" | Raw Name: "${rawName}"`);
