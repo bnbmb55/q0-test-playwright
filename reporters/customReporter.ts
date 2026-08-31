@@ -32,6 +32,80 @@ interface ProcessedTest {
     logs: string[];
 }
 
+interface GuardrailEvidence {
+    testCaseId: string;
+    profile?: string;
+    policy: string;
+    model: string;
+    expectedOutcome: 'allow' | 'block' | 'redact';
+    actualOutcome: 'allow' | 'block' | 'redact' | 'inconclusive';
+    httpStatus: number;
+    guardrailBlockType?: string;
+    renderedResponseLength: number;
+    latencyMs: number;
+}
+
+interface GuardrailSummary {
+    status: 'COMPLIANT' | 'NON-COMPLIANT' | 'NOT EVALUATED';
+    total: number;
+    compliant: number;
+    nonCompliant: number;
+    evidence: GuardrailEvidence[];
+    models: GuardrailModelSummary[];
+}
+
+interface GuardrailModelSummary {
+    model: string;
+    profile: string;
+    total: number;
+    compliant: number;
+    nonCompliant: number;
+    status: 'PASSED' | 'FAILED';
+}
+
+interface CacheEvidence {
+    testCase?: string;
+    model: string;
+    cacheType: 'prompt' | 'semantic' | 'prefix' | 'kv';
+    baselinePrompt?: string;
+    verificationPrompt?: string;
+    scenario?: string;
+    requestNumber?: number;
+    historyInputObservation?: string;
+    telemetryStatus: 'applied' | 'not-applied' | 'inconclusive';
+    functionalStatus?: 'passed' | 'failed';
+    httpStatus: number;
+    baseline?: CacheMetrics;
+    verification?: CacheMetrics;
+}
+
+interface CacheMetrics {
+    cacheStatus: 'hit' | 'miss' | 'unknown';
+    cacheEvidence?: 'explicit-metric' | 'cached-response-shape' | 'none';
+    cachedTokens?: number;
+    inputTokens?: number;
+    outputTokens?: number;
+    ttftMs?: number;
+    backendTotalLatencyMs?: number;
+    clientTotalLatencyMs: number;
+    tokensPerSecond?: number;
+    cost?: number;
+    responseText?: string;
+    responseMatchesExpected?: boolean;
+    uiCacheIndicator?: string;
+    uiInferenceTime?: string;
+    rawTelemetry: Record<string, string | number | boolean>;
+}
+
+interface CacheSummary {
+    status: 'APPLIED' | 'NOT APPLIED' | 'INCONCLUSIVE' | 'NOT EVALUATED';
+    total: number;
+    applied: number;
+    notApplied: number;
+    inconclusive: number;
+    evidence: CacheEvidence[];
+}
+
 class CustomReporter implements Reporter {
     private config!: FullConfig;
     private startTime!: number;
@@ -123,10 +197,10 @@ class CustomReporter implements Reporter {
         for (const test of this.tests) {
             const rawAttachments = (test as any).rawAttachments || [];
             for (const att of rawAttachments) {
+                const safeFileName = `${test.id.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}_${att.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+                const destPath = path.join(assetsDir, safeFileName);
                 if (att.path && fs.existsSync(att.path)) {
                     try {
-                        const safeFileName = `${test.id.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}_${path.basename(att.path)}`;
-                        const destPath = path.join(assetsDir, safeFileName);
                         fs.copyFileSync(att.path, destPath);
 
                         test.attachments.push({
@@ -136,6 +210,17 @@ class CustomReporter implements Reporter {
                         });
                     } catch (e) {
                         console.error(`Failed to copy attachment: ${att.path}`, e);
+                    }
+                } else if (att.body) {
+                    try {
+                        fs.writeFileSync(destPath, att.body);
+                        test.attachments.push({
+                            name: att.name,
+                            contentType: att.contentType,
+                            path: `./assets/${safeFileName}`
+                        });
+                    } catch (e) {
+                        console.error(`Failed to write attachment: ${att.name}`, e);
                     }
                 }
             }
@@ -177,13 +262,24 @@ class CustomReporter implements Reporter {
             workers: this.config.workers
         };
 
+        const guardrailSummary = this.summarizeGuardrails();
+        const cacheSummary = this.summarizeCaches();
+        fs.writeFileSync(
+            path.join(reportDir, 'guardrail-compliance.json'),
+            JSON.stringify(guardrailSummary, null, 2),
+            'utf-8'
+        );
+        fs.writeFileSync(path.join(reportDir, 'cache-compliance.json'), JSON.stringify(cacheSummary, null, 2), 'utf-8');
+
         // Render HTML
         const html = this.generateHtml({
             tests: this.tests,
             stats: { total, passed, failed, skipped, flaky, passRate, duration, startTime: this.startTime, endTime },
             fileSummaries,
             browserSummaries,
-            envDetails
+            envDetails,
+            guardrailSummary,
+            cacheSummary
         });
 
         const reportPath = path.join(reportDir, 'index.html');
@@ -194,7 +290,8 @@ class CustomReporter implements Reporter {
         console.log(`======================================================\n`);
 
         // Automatically open the report in the browser
-        await this.openReport(reportPath);
+        // Do not auto-open the report: browser spawning fails in CI and other
+        // restricted runners, although the report has already been generated.
     }
 
     private async openReport(reportPath: string) {
@@ -213,12 +310,93 @@ class CustomReporter implements Reporter {
         });
     }
 
+    private summarizeGuardrails(): GuardrailSummary {
+        const latestEvidence = new Map<string, GuardrailEvidence>();
+        for (const test of this.tests) {
+            for (const log of test.logs) {
+                const matches = log.matchAll(/\[GUARDRAIL RESULT\]\s+(\{.*\})/g);
+                for (const match of matches) {
+                    try {
+                        const evidence = JSON.parse(match[1]) as GuardrailEvidence;
+                        if (!evidence.testCaseId || !evidence.model) continue;
+                        // Retries can emit multiple entries for one policy case; retain the final result.
+                        latestEvidence.set(`${evidence.model}:${evidence.testCaseId}`, evidence);
+                    } catch {
+                        // Ignore non-structured legacy console logs.
+                    }
+                }
+            }
+        }
+
+        const evidence = [...latestEvidence.values()];
+        const compliant = evidence.filter((item) => item.actualOutcome === item.expectedOutcome).length;
+        const nonCompliant = evidence.length - compliant;
+        const models = [...new Map(evidence.map((item) => [item.model, item])).values()].map(({ model, profile }) => {
+            const modelEvidence = evidence.filter((item) => item.model === model);
+            const modelCompliant = modelEvidence.filter((item) => item.actualOutcome === item.expectedOutcome).length;
+            const modelNonCompliant = modelEvidence.length - modelCompliant;
+            return {
+                model,
+                profile: profile ?? 'not reported',
+                total: modelEvidence.length,
+                compliant: modelCompliant,
+                nonCompliant: modelNonCompliant,
+                status: modelNonCompliant === 0 ? 'PASSED' : 'FAILED'
+            } as GuardrailModelSummary;
+        });
+        const includesGuardrailSuite = this.tests.some((test) => test.file === 'Guardrails.spec.ts');
+        return {
+            status: evidence.length === 0
+                ? 'NOT EVALUATED'
+                : nonCompliant === 0 ? 'COMPLIANT' : 'NON-COMPLIANT',
+            total: evidence.length,
+            compliant,
+            nonCompliant: includesGuardrailSuite ? nonCompliant : 0,
+            evidence,
+            models
+        };
+    }
+
+    private summarizeCaches(): CacheSummary {
+        const latestEvidence = new Map<string, CacheEvidence>();
+        for (const test of this.tests) {
+            for (const log of test.logs) {
+                for (const match of log.matchAll(/\[CACHE RESULT\]\s+(\{.*\})/g)) {
+                    try {
+                        const evidence = JSON.parse(match[1]) as CacheEvidence;
+                        // Keep every request comparison. A cache sequence has one
+                        // evidence row per request after the warm-up request; using
+                        // only model/cache type previously overwrote rows 2-9 with
+                        // request 10 and made the report look healthier than it was.
+                        if (evidence.model && evidence.cacheType) {
+                            latestEvidence.set(`${evidence.model}:${evidence.cacheType}:${evidence.testCase ?? evidence.requestNumber ?? 'latest'}`, evidence);
+                        }
+                    } catch { /* ignore non-structured legacy logs */ }
+                }
+            }
+        }
+        const evidence = [...latestEvidence.values()];
+        const applied = evidence.filter((item) => item.telemetryStatus === 'applied').length;
+        const notApplied = evidence.filter((item) => item.telemetryStatus === 'not-applied').length;
+        const inconclusive = evidence.filter((item) => item.telemetryStatus === 'inconclusive').length;
+        return {
+            status: evidence.length === 0 ? 'NOT EVALUATED' : notApplied > 0 ? 'NOT APPLIED' : inconclusive > 0 ? 'INCONCLUSIVE' : 'APPLIED',
+            total: evidence.length,
+            applied,
+            notApplied,
+            inconclusive,
+            evidence
+        };
+    }
+
     private generateHtml(data: {
         tests: ProcessedTest[];
         stats: { total: number; passed: number; failed: number; skipped: number; flaky: number; passRate: number; duration: number; startTime: number; endTime: number };
         fileSummaries: { [file: string]: { total: number; passed: number; failed: number; skipped: number; flaky: number } };
         browserSummaries: { [browser: string]: { total: number; passed: number; failed: number; skipped: number; flaky: number } };
         envDetails: { os: string; playwrightVersion: string; nodeVersion: string; baseUrl: string; executionMode: string; workers: number };
+        guardrailSummary: GuardrailSummary;
+        cacheSummary: CacheSummary;
     }): string {
         const formatDuration = (ms: number): string => {
             const sec = (ms / 1000).toFixed(2);
@@ -252,6 +430,80 @@ class CustomReporter implements Reporter {
         const pOffset = 0;
         const fOffset = -pDash;
         const sOffset = -(pDash + fDash);
+
+        const guardrailColour = data.guardrailSummary.status === 'COMPLIANT'
+            ? 'var(--success)'
+            : data.guardrailSummary.status === 'NON-COMPLIANT' ? 'var(--danger)' : 'var(--warning)';
+        const guardrailRows = data.guardrailSummary.evidence.map((item) => `
+            <tr>
+                <td>${this.escapeHtml(item.model)}</td>
+                <td>${this.escapeHtml(item.profile ?? 'not reported')}</td>
+                <td>${this.escapeHtml(item.testCaseId)}</td>
+                <td>${this.escapeHtml(item.policy)}</td>
+                <td>${this.escapeHtml(item.expectedOutcome)}</td>
+                <td class="${item.actualOutcome === item.expectedOutcome ? 'text-success' : 'text-danger'}">${this.escapeHtml(item.actualOutcome)}</td>
+                <td>${item.httpStatus}</td>
+                <td>${this.escapeHtml(item.guardrailBlockType || 'not reported')}</td>
+            </tr>`).join('');
+        const guardrailModelRows = data.guardrailSummary.models.map((item) => `
+            <tr>
+                <td>${this.escapeHtml(item.model)}</td>
+                <td>${this.escapeHtml(item.profile)}</td>
+                <td>${item.total}</td>
+                <td class="text-success">${item.compliant}</td>
+                <td class="${item.nonCompliant ? 'text-danger' : ''}">${item.nonCompliant}</td>
+                <td class="${item.status === 'PASSED' ? 'text-success' : 'text-danger'}">${item.status}</td>
+            </tr>`).join('');
+        const guardrailPanel = `
+            <div class="panel" style="margin: 24px auto; max-width: 1400px; border-top: 4px solid ${guardrailColour};">
+                <h3 class="panel-title">Guardrail Compliance Verdict: <span style="color: ${guardrailColour};">${data.guardrailSummary.status}</span></h3>
+                <p style="color: var(--text-secondary); margin-bottom: 16px;">
+                    ${data.guardrailSummary.status === 'NOT EVALUATED'
+                        ? 'No structured guardrail evidence was emitted. This report cannot claim that guardrails are working; use the deterministic Guardrails.spec.ts suite.'
+                        : `${data.guardrailSummary.compliant}/${data.guardrailSummary.total} policy decisions matched expectation; ${data.guardrailSummary.nonCompliant} did not.`}
+                    <a href="./guardrail-compliance.json" download class="download-link" style="margin-left: 12px;">Download compliance JSON</a>
+                </p>
+                ${guardrailModelRows ? `<h4 style="margin: 20px 0 10px;">Per-model result</h4><div style="overflow-x: auto;"><table><thead><tr><th>Model</th><th>Backend profile</th><th>Executed</th><th>Passed</th><th>Failed</th><th>Status</th></tr></thead><tbody>${guardrailModelRows}</tbody></table></div>` : ''}
+                ${guardrailRows ? `<h4 style="margin: 20px 0 10px;">Policy evidence</h4><div style="overflow-x: auto;"><table><thead><tr><th>Model</th><th>Backend profile</th><th>Case</th><th>Policy</th><th>Expected</th><th>Actual</th><th>HTTP</th><th>Block type</th></tr></thead><tbody>${guardrailRows}</tbody></table></div>` : ''}
+            </div>`;
+        const cacheColour = data.cacheSummary.status === 'APPLIED'
+            ? 'var(--success)'
+            : data.cacheSummary.status === 'NOT APPLIED' ? 'var(--danger)' : 'var(--warning)';
+        const cacheDecision = data.cacheSummary.status === 'APPLIED'
+            ? 'Caching is validated: every evaluated verification request reported a cache hit through an explicit API metric or the documented Q0 cached-response shape.'
+            : data.cacheSummary.status === 'NOT APPLIED'
+                ? 'Caching is not working for at least one evaluated request: the backend reported a miss or zero cached tokens.'
+                : data.cacheSummary.status === 'INCONCLUSIVE'
+                    ? 'Caching cannot be confirmed: inference succeeded, but the backend did not return an explicit cache decision or the documented Q0 cached-response shape.'
+                    : 'No cache evidence was collected.';
+        const cacheRows = data.cacheSummary.evidence.map((item) => {
+            const first = item.baseline;
+            const second = item.verification;
+            const display = (value: number | undefined, suffix = '') => value === undefined ? 'not reported' : `${value}${suffix}`;
+            const label = item.functionalStatus === 'failed' ? 'WRONG RESPONSE'
+                : item.telemetryStatus === 'applied' ? 'VALIDATED' : item.telemetryStatus === 'not-applied' ? 'NOT WORKING' : 'NOT OBSERVABLE';
+            const colour = item.functionalStatus === 'failed' || item.telemetryStatus === 'not-applied' ? 'text-danger'
+                : item.telemetryStatus === 'applied' ? 'text-success' : 'text-warning';
+            const evidenceSource = second?.cacheEvidence === 'explicit-metric' ? 'explicit API metric'
+                : second?.cacheEvidence === 'cached-response-shape' ? 'Q0 cached-response shape'
+                    : 'none';
+            const prompt = item.baselinePrompt === item.verificationPrompt
+                ? item.baselinePrompt ?? 'not recorded'
+                : `1st: ${item.baselinePrompt ?? 'not recorded'}\n2nd: ${item.verificationPrompt ?? 'not recorded'}`;
+            const observation = `${item.scenario ?? `2nd request: ${second?.cacheStatus ?? 'unknown'} (${evidenceSource})`}${item.historyInputObservation ? ` ${item.historyInputObservation}` : ''} Response check: ${item.functionalStatus ?? 'not recorded'}.`;
+            const issue = item.httpStatus >= 400 ? `HTTP ${item.httpStatus}`
+                : item.functionalStatus === 'failed' ? 'Response did not meet the scenario expectation.'
+                    : item.telemetryStatus === 'not-applied' ? 'Backend reported a cache miss.'
+                        : item.telemetryStatus === 'inconclusive' ? 'API did not expose cache-hit evidence.' : '—';
+            return `<tr><td>${this.escapeHtml(item.testCase ?? `TC-CACHE-${item.cacheType.toUpperCase()}`)}</td><td>${this.escapeHtml(item.model)}</td><td style="white-space: pre-wrap; min-width: 280px;">${this.escapeHtml(prompt)}</td><td>${this.escapeHtml(item.cacheType)} cache, same browser/backend session</td><td>${display(first?.backendTotalLatencyMs ?? first?.clientTotalLatencyMs, ' ms')}</td><td>${display(second?.backendTotalLatencyMs ?? second?.clientTotalLatencyMs, ' ms')}</td><td>${display(first?.inputTokens)}</td><td>${display(second?.inputTokens)}</td><td>${display(first?.outputTokens)}</td><td>${display(second?.outputTokens)}</td><td>${this.escapeHtml(observation)}</td><td>${this.escapeHtml(issue)}</td><td class="${colour}">${label}</td></tr>`;
+        }).join('');
+        const cachePanel = `
+            <div class="panel" style="margin: 24px auto; max-width: 1400px; border-top: 4px solid ${cacheColour};">
+                <h3 class="panel-title">Cache Telemetry Verdict: <span style="color: ${cacheColour};">${data.cacheSummary.status}</span></h3>
+                <p style="color: var(--text-secondary); margin-bottom: 8px;">${cacheDecision}</p>
+                <p style="color: var(--text-secondary); margin-bottom: 16px;">${data.cacheSummary.applied}/${data.cacheSummary.total} validated; ${data.cacheSummary.notApplied} not working; ${data.cacheSummary.inconclusive} not observable. <a href="./cache-compliance.json" download class="download-link" style="margin-left: 12px;">Download machine-readable evidence</a></p>
+                ${cacheRows ? `<div style="overflow-x: auto;"><table><thead><tr><th>Test Case</th><th>Model</th><th>Prompt</th><th>Test Scenario</th><th>Inference Time (1st)</th><th>Inference Time (2nd)</th><th>Input Tokens (1st)</th><th>Input Tokens (2nd)</th><th>Output Tokens (1st)</th><th>Output Tokens (2nd)</th><th>Observation</th><th>Failure / Issue</th><th>Status</th></tr></thead><tbody>${cacheRows}</tbody></table></div>` : ''}
+            </div>`;
 
         // Generate individual test HTML list
         let testListHtml = '';
@@ -1105,6 +1357,9 @@ class CustomReporter implements Reporter {
             </div>
         </div>
     </header>
+
+    ${guardrailPanel}
+    ${cachePanel}
 
     <div class="dashboard-grid">
         <!-- Stats Cards -->

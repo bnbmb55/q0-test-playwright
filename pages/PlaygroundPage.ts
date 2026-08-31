@@ -27,28 +27,54 @@ export class PlaygroundPage {
         const searchKeyword = model.id.split('/')[0].replace(/[-_]/g, ' ').split(' ')[0];
         try {
             const trigger = this.page.getByRole('button', {
-                name: /Llama|GPT|Whisper|Kokoro|Surya|Paddle|Chandra|Stable|Gemma|DeepSeek|Sarvam|Qwen|Kimi|Moonlight/i
+                name: /Llama|GPT|Whisper|Kokoro|Surya|Paddle|Chandra|Stable|Gemma|DeepSeek|Sarvam|Qwen|QwQ|Kimi|Moonlight|Mistral|Mixtral/i
             }).first();
             await expect(trigger).toBeVisible({ timeout: 15000 });
-            await trigger.click();
+            // The model selector can re-render while model metadata is loading.
+            // Bound this UI action so a detached trigger fails diagnostically instead
+            // of consuming the full model/guardrail scenario timeout.
+            await trigger.click({ timeout: 15000 });
 
             const search = this.page.getByPlaceholder('Search model');
             await expect(search).toBeVisible({ timeout: 5000 });
-            await search.fill(model.id);
-
-            const exactModel = this.page.locator('[role="dialog"]').getByText(model.id, { exact: true }).first();
-            const fallbackModel = this.page.locator('[role="dialog"]').getByText(new RegExp(searchKeyword, 'i')).first();
-            if (await exactModel.isVisible({ timeout: 3000 }).catch(() => false)) {
-                await exactModel.click();
-            } else {
-                await expect(fallbackModel).toBeVisible({ timeout: 10000 });
-                await fallbackModel.click();
+            const dialog = this.page.locator('[role="dialog"]');
+            let selected = false;
+            for (const searchTerm of [...new Set([model.id, model.displayName])]) {
+                await search.fill(searchTerm);
+                const exactId = dialog.getByText(model.id, { exact: true }).first();
+                const exactDisplayName = dialog.getByText(model.displayName, { exact: true }).first();
+                if (await exactId.isVisible({ timeout: 2500 }).catch(() => false)) {
+                    await exactId.click({ timeout: 10000 });
+                    selected = true;
+                    break;
+                }
+                if (await exactDisplayName.isVisible({ timeout: 2500 }).catch(() => false)) {
+                    await exactDisplayName.click({ timeout: 10000 });
+                    selected = true;
+                    break;
+                }
+            }
+            if (!selected) {
+                // A provider keyword fallback can select the wrong Llama/Qwen
+                // variant and falsely attribute its result to the requested model.
+                throw new Error(`Exact Playground model was not found: ${model.id} (${model.displayName})`);
             }
 
-            await expect(this.page.getByRole('button', { name: new RegExp(searchKeyword, 'i') }).first()).toBeVisible({ timeout: 10000 });
+            const selectedModel = this.page.getByRole('button', { name: new RegExp(`${escapeRegExp(model.id)}|${escapeRegExp(model.displayName)}`, 'i') }).first();
+            await expect(selectedModel).toBeVisible({ timeout: 10000 });
             return true;
         } catch (error: any) {
-            console.warn(`[MODEL SELECT WARN] Could not select ${model.displayName}: ${error.message}`);
+            const dialog = this.page.locator('[role="dialog"]');
+            const search = this.page.getByPlaceholder('Search model');
+            // Keep selection exact, but include related live catalogue entries in the
+            // failure diagnostic. This exposes a renamed/deployed model safely rather
+            // than falling back to a different model from the same provider.
+            const relatedEntries = await (async () => {
+                if (!await search.isVisible({ timeout: 1000 }).catch(() => false)) return 'model search unavailable';
+                await search.fill(searchKeyword).catch(() => {});
+                return dialog.innerText().catch(() => 'model dialog unavailable');
+            })();
+            console.warn(`[MODEL SELECT WARN] Could not select ${model.displayName}: ${error.message}. Related entries for "${searchKeyword}": ${relatedEntries}`);
             await this.page.keyboard.press('Escape').catch(() => {});
             return false;
         }
@@ -83,4 +109,8 @@ export class PlaygroundPage {
             await this.resetButton.click();
         }
     }
+}
+
+function escapeRegExp(value: string): string {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
