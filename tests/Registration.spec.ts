@@ -1,10 +1,12 @@
 import { test, expect } from '../fixtures/base';
 import { DataGenerator } from '../utils/dataGenerator';
-import { AppConfig } from '../utils/config';
+import { getLoginCredentials } from '../utils/testConfig';
 
 test.describe('Registration Scenarios', () => {
     test.setTimeout(90000);
     test.slow();
+    // A retry creates another external account and invalidates test evidence.
+    test.describe.configure({ retries: 0 });
 
     test('TC-REG-01: Successful Individual User Registration', async ({ loginPage, registrationPage, dashboardPage }) => {
         const email = DataGenerator.generateRandomEmail();
@@ -52,7 +54,7 @@ test.describe('Registration Scenarios', () => {
     test('TC-REG-03: Verify error when registering with an existing email', async ({ loginPage, registrationPage }) => {
         await loginPage.navigate();
         await loginPage.goToSignUp();//added cmnt
-        await registrationPage.emailInput.fill('patil.tanmay9900@gmail.com');
+        await registrationPage.emailInput.fill(getLoginCredentials('login').email);
         await registrationPage.nextButton.click({ force: true });
         await expect(registrationPage.page.getByText(/An account with this email/i)).toBeVisible();
     });

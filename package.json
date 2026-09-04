@@ -4,8 +4,10 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test:smoke": "playwright test --grep \"smoke\"",
-    "test:regression": "playwright test"
+    "test:smoke": "node scripts/run-playwright.js --smoke --project=chromium Playground.spec.ts Guardrails.spec.ts PromptCaching.spec.ts",
+    "test:regression": "playwright test",
+    "test:cache": "playwright test PromptCaching.spec.ts SemanticCaching.spec.ts PrefixCaching.spec.ts KvCaching.spec.ts --project=chromium --retries=0",
+    "test:guardrails": "playwright test Guardrails.spec.ts --project=chromium --retries=0"
   },
   "keywords": [],
   "author": "",

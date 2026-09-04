@@ -8,6 +8,9 @@ jobs:
   test:
     timeout-minutes: 60
     runs-on: ubuntu-latest
+    env:
+      Q0_EMAIL: ${{ secrets.Q0_EMAIL }}
+      Q0_PASSWORD: ${{ secrets.Q0_PASSWORD }}
     steps:
     - uses: actions/checkout@v4
     - uses: actions/setup-node@v4
@@ -17,6 +20,10 @@ jobs:
       run: npm ci
     - name: Install Playwright Browsers
       run: npx playwright install --with-deps
+    - name: Verify QA credentials are configured
+      run: |
+        test -n "$Q0_EMAIL"
+        test -n "$Q0_PASSWORD"
     - name: Run Playwright tests
       run: npx playwright test
     - uses: actions/upload-artifact@v4

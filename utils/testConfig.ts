@@ -5,33 +5,35 @@ type LoginCredentials = {
 
 const readEnv = (name: string, fallback: string): string => process.env[name] ?? fallback;
 const readOptionalEnv = (name: string): string | undefined => process.env[name];
+const readCredential = (profileVariable: string, sharedVariable: string): string =>
+    process.env[profileVariable] ?? process.env[sharedVariable] ?? '';
 
 export const TestConfig = {
     baseUrl: readEnv('PLAYWRIGHT_BASE_URL', readEnv('Q0_BASE_URL', 'https://ui-beta.q0.dev')),
     credentials: {
         default: {
-            email: readEnv('Q0_EMAIL', 'devnewuser@gmail.com'),
-            password: readEnv('Q0_PASSWORD', 'Ganesha@5050')
+            email: readCredential('Q0_EMAIL', 'Q0_EMAIL'),
+            password: readCredential('Q0_PASSWORD', 'Q0_PASSWORD')
         } as LoginCredentials,
         dashboard: {
-            email: readEnv('Q0_DASHBOARD_EMAIL', 'aadita.shirsat@yahoo.com'),
-            password: readEnv('Q0_DASHBOARD_PASSWORD', 'Ganesha@5050')
+            email: readCredential('Q0_DASHBOARD_EMAIL', 'Q0_EMAIL'),
+            password: readCredential('Q0_DASHBOARD_PASSWORD', 'Q0_PASSWORD')
         } as LoginCredentials,
         login: {
-            email: readEnv('Q0_LOGIN_EMAIL', 'patil.tanmay9900@gmail.com'),
-            password: readEnv('Q0_LOGIN_PASSWORD', 'Tanmay@123')
+            email: readCredential('Q0_LOGIN_EMAIL', 'Q0_EMAIL'),
+            password: readCredential('Q0_LOGIN_PASSWORD', 'Q0_PASSWORD')
         } as LoginCredentials,
         training: {
-            email: readEnv('Q0_TRAINING_EMAIL', 'vikasnew.rathod@gmail.com'),
-            password: readEnv('Q0_TRAINING_PASSWORD', 'Ganesha@5050')
+            email: readCredential('Q0_TRAINING_EMAIL', 'Q0_EMAIL'),
+            password: readCredential('Q0_TRAINING_PASSWORD', 'Q0_PASSWORD')
         } as LoginCredentials,
         google: {
-            email: readEnv('Q0_GOOGLE_EMAIL', 'vivekyadavuwi@gmail.com'),
-            password: readEnv('Q0_GOOGLE_PASSWORD', 'Ganesha@5050')
+            email: readCredential('Q0_GOOGLE_EMAIL', 'Q0_EMAIL'),
+            password: readCredential('Q0_GOOGLE_PASSWORD', 'Q0_PASSWORD')
         } as LoginCredentials,
         github: {
-            email: readEnv('Q0_GITHUB_EMAIL', 'larryrathod2@gmail.com'),
-            password: readEnv('Q0_GITHUB_PASSWORD', 'Ganesha@5050')
+            email: readCredential('Q0_GITHUB_EMAIL', 'Q0_EMAIL'),
+            password: readCredential('Q0_GITHUB_PASSWORD', 'Q0_PASSWORD')
         } as LoginCredentials
     },
     timeouts: {
@@ -51,4 +53,10 @@ export const TestConfig = {
     }
 };
 
-export const getLoginCredentials = (key: keyof typeof TestConfig.credentials = 'default'): LoginCredentials => TestConfig.credentials[key];
+export const getLoginCredentials = (key: keyof typeof TestConfig.credentials = 'default'): LoginCredentials => {
+    const credentials = TestConfig.credentials[key];
+    if (!credentials.email || !credentials.password) {
+        throw new Error(`Missing credentials for "${key}". Set Q0_EMAIL/Q0_PASSWORD or the profile-specific Q0_${key.toUpperCase()}_EMAIL/Q0_${key.toUpperCase()}_PASSWORD variables.`);
+    }
+    return credentials;
+};

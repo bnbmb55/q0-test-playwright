@@ -25,6 +25,11 @@ export const textGenerationModels: PlaygroundModel[] = [
     { id: 'Llama-4-Scout-17B-16E-Instruct', displayName: 'Llama-4-Scout-17B-16E-Instruct', capability: 'text-generation' }
 ];
 
+/** A canary model keeps smoke runs fast; the full suite always covers all models. */
+export const textGenerationModelsForRun = process.env.PLAYWRIGHT_SMOKE === 'true'
+    ? [textGenerationModels[0]]
+    : textGenerationModels;
+
 export const kokoroTextToSpeechModel: PlaygroundModel = {
     id: 'hexgrad/Kokoro-82M',
     displayName: 'Kokoro 82M',

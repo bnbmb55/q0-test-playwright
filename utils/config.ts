@@ -1,5 +1,8 @@
+import { TestConfig } from './testConfig';
+
 export const AppConfig = {
-    baseUrl: 'https://ui-beta.q0.dev',
+    // Keep navigation and Playwright's baseURL on the same environment.
+    baseUrl: TestConfig.baseUrl,
     paths: {
         signIn: '/signin',
         signUp: '/signup',

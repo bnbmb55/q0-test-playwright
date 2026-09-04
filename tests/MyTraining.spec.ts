@@ -4,10 +4,13 @@ import { TestConfig } from '../utils/testConfig';
 
 test.describe('AWS Training Submission Suite', () => {
     test.setTimeout(300000);
-    test.describe.configure({ retries: 1 });
+    // These tests create datasets and billable training jobs. A retry can create
+    // a duplicate job, and parallel setup can race while creating the AWS secret.
+    test.describe.configure({ mode: 'serial', retries: 0 });
     // Training creates billable backend jobs; execute the workflow once rather
     // than duplicating it across Chromium, Firefox, and WebKit projects.
     test.skip(({ browserName }) => browserName !== 'chromium', 'AWS training submission is validated in Chromium only.');
+    test.skip(() => process.env.RUN_BILLABLE_TRAINING !== 'true', 'Set RUN_BILLABLE_TRAINING=true to create real training jobs.');
 
     test.beforeEach(async ({ authenticate, trainingPage }) => {
         await authenticate('training');

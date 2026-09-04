@@ -29,6 +29,5 @@ jobs:
     - name: Install Playwright Browsers
       run: npx playwright install --with-deps
 
-    # Customize this step as needed
-    - name: Build application
-      run: npx run build
+    - name: Verify Playwright test discovery
+      run: npx playwright test --list --project=chromium

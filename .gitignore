@@ -1,6 +1,7 @@
 # Node / Dependencies
 node_modules/
 temp_node/
+.env
 
 # Playwright Reports & Results
 /test-results/

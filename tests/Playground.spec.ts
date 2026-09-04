@@ -1,5 +1,5 @@
 import { test, expect } from '../fixtures/base';
-import { kokoroTextToSpeechModel, textGenerationModels } from '../data/playground/models';
+import { kokoroTextToSpeechModel, textGenerationModelsForRun } from '../data/playground/models';
 import {
     playgroundScenarios,
     smokeScenarios,
@@ -28,17 +28,12 @@ test.describe('Playground QA Test Suite - All Text Generation Models (Hallucinat
         // Ensure modal popovers are closed
         await page.keyboard.press('Escape').catch(() => {});
 
-        const textbox = page.getByPlaceholder('Type something...').or(page.locator('textarea')).first();
-        if (!(await textbox.isVisible({ timeout: 3000 }).catch(() => false))) {
-            console.log(`[UI INFO] Textbox not present. Skipping prompt.`);
-            return;
-        }
-
-        const isReadOnly = await textbox.evaluate((el: any) => el.readOnly || el.disabled).catch(() => false);
-        if (isReadOnly) {
-            console.log(`[UI INFO] Textbox is read-only. Skipping prompt.`);
-            return;
-        }
+        const textbox = page.getByPlaceholder('Type something...')
+            .or(page.getByPlaceholder('Type your prompt here...'))
+            .or(page.locator('textarea'))
+            .first();
+        await expect(textbox, 'The selected model must expose an editable Playground prompt input').toBeVisible({ timeout: 15000 });
+        await expect(textbox, 'The selected model prompt input must be editable').toBeEditable({ timeout: 10000 });
 
         if (bypassCache) {
             const systemPromptInput = page.getByPlaceholder('Enter a initial system prompt');
@@ -49,13 +44,8 @@ test.describe('Playground QA Test Suite - All Text Generation Models (Hallucinat
         }
 
         const finalPrompt = bypassCache ? `${prompt} [id-${Date.now()}]` : prompt;
-        try {
-            await textbox.focus({ timeout: 2000 });
-            await textbox.fill(finalPrompt, { timeout: 3000 });
-        } catch (err: any) {
-            console.warn(`[UI WARN] Textbox fill warning: ${err.message}`);
-            return;
-        }
+        await textbox.focus();
+        await textbox.fill(finalPrompt);
 
         // Setup SSE response promise
         const ssePromise = page.waitForResponse(
@@ -63,27 +53,20 @@ test.describe('Playground QA Test Suite - All Text Generation Models (Hallucinat
                 response.url().includes('/inference/') ||
                 response.url().includes('/api/') ||
                 response.url().includes('/playground/')
-            ) && response.request().method() === 'POST',
-            { timeout: 30000 }
-        ).catch(() => null);
+            ) && response.request().method() === 'POST'
+                && (response.request().postData()?.includes(finalPrompt) ?? false),
+            { timeout: 90000 }
+        );
 
         console.log(`[SUBMIT PROMPT] Category: "${category.toUpperCase()}" | Prompt: "${finalPrompt}"`);
         const startTime = Date.now();
-        await textbox.press('Enter').catch(() => {});
+        await textbox.press('Enter');
 
         const response = await ssePromise;
         const endTime = Date.now();
         const inferenceTimeMs = endTime - startTime;
 
-        if (!response) {
-            console.warn(`[QA WARN] Inference API response timeout for prompt: "${prompt}".`);
-            return;
-        }
-
-        if (response.status() !== 200) {
-            console.warn(`[QA WARN] Inference API status ${response.status()} for prompt: "${prompt}".`);
-            return;
-        }
+        expect(response.status(), `Inference request for ${category} prompt must complete successfully`).toBeLessThan(400);
 
         const bodyText = await response.text().catch(() => '');
         let isBlocked = false;
@@ -100,7 +83,7 @@ test.describe('Playground QA Test Suite - All Text Generation Models (Hallucinat
             if (line.startsWith('data: ')) {
                 try {
                     const eventData = JSON.parse(line.substring(6).trim());
-                    if (eventData.blocked === true || eventData.guardrail_blocked) {
+                    if (isGuardrailBlocked(eventData.blocked) || isGuardrailBlocked(eventData.guardrail_blocked)) {
                         isBlocked = true;
                     }
                     if (eventData.guardrail_blocked) {
@@ -113,7 +96,7 @@ test.describe('Playground QA Test Suite - All Text Generation Models (Hallucinat
                         inputTokens = Math.max(inputTokens, eventData.num_input_tokens);
                     }
                     if (typeof eventData.num_output_tokens === 'number') {
-                        outputTokens = Math.max(outputTokens, eventData.num_output_tokens);
+                        outputTokens += eventData.num_output_tokens;
                     }
                     if (typeof eventData.backend_latency_ms === 'number') {
                         backendLatency = eventData.backend_latency_ms;
@@ -140,21 +123,17 @@ test.describe('Playground QA Test Suite - All Text Generation Models (Hallucinat
         // Standard assertions for Playground E2E
         expect(inferenceTimeMs).toBeGreaterThan(0);
         if (!isBlocked) {
-            if (finalResponseText.length === 0) {
-                console.warn(`[QA EVALUATION WARN] Empty response text generated for prompt: "${prompt}".`);
-            } else {
-                console.log(`[QA EVALUATION SUCCESS] Valid response text received (length: ${finalResponseText.length}).`);
-            }
-            expect(inputTokens).toBeGreaterThanOrEqual(0);
-            expect(outputTokens).toBeGreaterThanOrEqual(0);
+            expect(finalResponseText, `Model must return text for a non-blocked ${category} prompt`).not.toBe('');
+            expect(inputTokens, 'Inference API must report input-token usage').toBeGreaterThan(0);
+            expect(outputTokens, 'Inference API must report output-token usage').toBeGreaterThan(0);
             
             if (category === 'hallucination' && finalResponseText.length > 0) {
                 const responseLower = finalResponseText.toLowerCase();
                 if (prompt.includes('Wakanda') && !responseLower.includes('fictional') && !responseLower.includes('marvel') && !responseLower.includes('comic')) {
-                    console.log(`[AI HALLUCINATION WARNING] Model might be hallucinating on Wakanda prompt!`);
+                    expect(finalResponseText, 'Wakanda response must identify its fictional context').toMatch(/fictional|marvel|comic/i);
                 }
                 if (prompt.includes('Mars') && !responseLower.includes('no president') && !responseLower.includes('fictional') && !responseLower.includes('human has not') && !responseLower.includes('has not been colonised')) {
-                    console.log(`[AI HALLUCINATION WARNING] Model might be hallucinating on Mars president prompt!`);
+                    expect(finalResponseText, 'Mars-president response must reject the false premise').toMatch(/no president|fictional|human has not|has not been colonised/i);
                 }
             }
         } else {
@@ -163,10 +142,7 @@ test.describe('Playground QA Test Suite - All Text Generation Models (Hallucinat
 
         // Reset the chat to clear context for the next prompt
         const resetBtn = page.getByRole('button', { name: 'Reset' });
-        if (await resetBtn.isVisible({ timeout: 1500 }).catch(() => false)) {
-            await resetBtn.click().catch(() => {});
-            await page.waitForTimeout(500);
-        }
+        if (await resetBtn.isVisible({ timeout: 1500 }).catch(() => false)) await resetBtn.click();
     }
 
     async function generateAndEvaluateAudio(page: any, playgroundPage: any, scenario: TextToAudioScenario) {
@@ -205,16 +181,13 @@ test.describe('Playground QA Test Suite - All Text Generation Models (Hallucinat
         : playgroundScenarios;
 
     // Parameterized test loop across all models
-    for (let i = 0; i < textGenerationModels.length; i++) {
-        const modelConfig = textGenerationModels[i];
+    for (let i = 0; i < textGenerationModelsForRun.length; i++) {
+        const modelConfig = textGenerationModelsForRun[i];
 
-        test.describe(`Model ${i + 1}/${textGenerationModels.length}: ${modelConfig.displayName}`, () => {
+        test.describe(`Model ${i + 1}/${textGenerationModelsForRun.length}: ${modelConfig.displayName}`, () => {
             test(`TC-PLAYGROUND-01: Hallucination Evaluation (${scenariosToRun.filter((scenario) => scenario.category === 'hallucination').length} Prompts)`, async ({ page, playgroundPage }) => {
                 const isSelected = await playgroundPage.selectModel(modelConfig);
-                if (!isSelected) {
-                    console.warn(`[SKIP] Model ${modelConfig.displayName} is not active or selectable.`);
-                    return;
-                }
+                expect(isSelected, `${modelConfig.displayName} must be available for Playground coverage`).toBeTruthy();
 
                 const hallucinationPrompts = scenariosToRun
                     .filter((scenario) => scenario.category === 'hallucination')
@@ -229,10 +202,7 @@ test.describe('Playground QA Test Suite - All Text Generation Models (Hallucinat
 
             test(`TC-PLAYGROUND-02: Positive Functional Scenarios (${scenariosToRun.filter((scenario) => scenario.category === 'positive').length} Prompts)`, async ({ page, playgroundPage }) => {
                 const isSelected = await playgroundPage.selectModel(modelConfig);
-                if (!isSelected) {
-                    console.warn(`[SKIP] Model ${modelConfig.displayName} is not active or selectable.`);
-                    return;
-                }
+                expect(isSelected, `${modelConfig.displayName} must be available for Playground coverage`).toBeTruthy();
 
                 const positivePrompts = scenariosToRun
                     .filter((scenario) => scenario.category === 'positive')
@@ -247,10 +217,7 @@ test.describe('Playground QA Test Suite - All Text Generation Models (Hallucinat
 
             test(`TC-PLAYGROUND-03: Negative & Edge Case Scenarios (${scenariosToRun.filter((scenario) => scenario.category === 'negative').length} Prompts)`, async ({ page, playgroundPage }) => {
                 const isSelected = await playgroundPage.selectModel(modelConfig);
-                if (!isSelected) {
-                    console.warn(`[SKIP] Model ${modelConfig.displayName} is not active or selectable.`);
-                    return;
-                }
+                expect(isSelected, `${modelConfig.displayName} must be available for Playground coverage`).toBeTruthy();
 
                 const negativePrompts = scenariosToRun
                     .filter((scenario) => scenario.category === 'negative')
@@ -285,3 +252,8 @@ test.describe('Playground QA Test Suite - All Text Generation Models (Hallucinat
         }
     });
 });
+
+function isGuardrailBlocked(value: unknown): boolean {
+    if (value === true || value === 1) return true;
+    return typeof value === 'string' && ['true', 'blocked', 'block'].includes(value.trim().toLowerCase());
+}

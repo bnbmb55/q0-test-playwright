@@ -92,6 +92,13 @@ export async function validateCacheSequence(
         await testInfo.attach(`cache-${cacheType}-request-${prompt.number}.json`, {
             body: Buffer.from(JSON.stringify(row, null, 2)), contentType: 'application/json'
         });
+
+        // Prompt, semantic, and prefix checks are independent requests in the
+        // same browser/backend session. Retain the tab/session cookies but clear
+        // conversation history so prior turns cannot be mistaken for KV reuse.
+        if (cacheType !== 'kv' && prompt.number < prompts.length) {
+            await resetConversation(page);
+        }
     }
 
     expect(submissions[0]?.httpStatus, 'The first request must complete successfully.').toBeLessThan(400);
@@ -105,6 +112,15 @@ export async function validateCacheSequence(
     expect(failures, `Cache validation failed for ${model.displayName} (${cacheType}).`).toEqual([]);
 }
 
+async function resetConversation(page: Page): Promise<void> {
+    const reset = page.getByRole('button', { name: /^reset$/i });
+    await expect(reset, 'Playground must provide Reset to isolate standalone cache requests').toBeVisible({ timeout: 10000 });
+    await reset.click();
+    const input = page.getByPlaceholder('Type something...').or(page.getByPlaceholder('Type your prompt here...')).or(page.locator('textarea')).first();
+    await expect(input, 'Playground prompt input must remain available after Reset').toBeEditable({ timeout: 10000 });
+    await expect(input, 'Reset must clear the conversation prompt input').toHaveValue('');
+}
+
 async function submit(page: Page, prompt: string): Promise<Submission> {
     const input = page.getByPlaceholder('Type something...').or(page.getByPlaceholder('Type your prompt here...')).or(page.locator('textarea')).first();
     await expect(input).toBeVisible({ timeout: 15000 });
@@ -113,7 +129,7 @@ async function submit(page: Page, prompt: string): Promise<Submission> {
     const startedAt = Date.now();
     // Cold starts and queueing for the larger hosted models can legitimately
     // exceed one minute. This is a response-header wait, not a fixed sleep.
-    const responsePromise = page.waitForResponse(isInferenceResponse, { timeout: 180000 });
+    const responsePromise = page.waitForResponse((response) => isInferenceResponse(response, prompt), { timeout: 180000 });
     await input.press('Enter');
     const response = await responsePromise;
     const body = await response.text().catch(() => '');
@@ -121,9 +137,11 @@ async function submit(page: Page, prompt: string): Promise<Submission> {
     return { httpStatus: response.status(), metrics: extractMetrics(response, body, Date.now() - startedAt, uiMetrics) };
 }
 
-function isInferenceResponse(response: Response): boolean {
+function isInferenceResponse(response: Response, prompt: string): boolean {
     if (response.request().method() !== 'POST' || !/\/(inference|api|playground)\//i.test(response.url())) return false;
-    return true;
+    // Several background POST calls can happen while the Playground is open.
+    // Associate evidence only with the request that contains this exact prompt.
+    return response.request().postData()?.includes(prompt) ?? false;
 }
 
 function hasUsableResponse(text: string): boolean {

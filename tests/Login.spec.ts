@@ -1,5 +1,4 @@
 import { test, expect } from '../fixtures/base';
-import { DataGenerator } from '../utils/dataGenerator';
 import { getLoginCredentials } from '../utils/testConfig';
 
 test.describe('Login Functionality', () => {
@@ -25,7 +24,7 @@ test.describe('Login Functionality', () => {
     });
 
     test('TC-LOGIN-03: Verify password visibility toggle functionality', async ({ loginPage }) => {
-        await loginPage.passwordInput.fill('Ganesha@5050');
+        await loginPage.passwordInput.fill('TestPassword@123');
         await expect(loginPage.passwordInput).toHaveAttribute('type', 'password');
         await loginPage.page.locator('form svg').click();
         await expect(loginPage.passwordInput).toHaveAttribute('type', 'text');
@@ -49,6 +48,7 @@ test.describe('Login Functionality', () => {
     });
 
     test('TC-LOGIN-07: Verify error when trying to login normally with Google account', async ({ loginPage }) => {
+        test.skip(!process.env.Q0_GOOGLE_EMAIL || !process.env.Q0_GOOGLE_PASSWORD, 'Q0_GOOGLE_EMAIL and Q0_GOOGLE_PASSWORD are required for this provider-specific scenario.');
         const googleUser = getLoginCredentials('google');
         await loginPage.login(googleUser.email, googleUser.password);
         await expect(loginPage.page.getByText(/please sign in with google|sign in using google/i)).toBeVisible({ timeout: 15000 });
@@ -69,6 +69,7 @@ test.describe('Login Functionality', () => {
     });
 
     test('TC-LOGIN-09: Verify error when trying to login normally with GitHub account', async ({ loginPage }) => {
+        test.skip(!process.env.Q0_GITHUB_EMAIL || !process.env.Q0_GITHUB_PASSWORD, 'Q0_GITHUB_EMAIL and Q0_GITHUB_PASSWORD are required for this provider-specific scenario.');
         const githubUser = getLoginCredentials('github');
         await loginPage.login(githubUser.email, githubUser.password);
         await expect(loginPage.page.getByText(/please sign in with github|sign in using github/i)).toBeVisible({ timeout: 15000 });

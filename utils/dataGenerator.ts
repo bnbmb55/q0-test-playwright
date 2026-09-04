@@ -52,16 +52,6 @@ export class DataGenerator {
         return `${prefix} ${suffix} ${Math.floor(Math.random() * 1000)}`;
     }
 
-    public static readonly GOOGLE_USER = {
-        email: 'vivekyadavuwi@gmail.com',
-        password: 'Ganesha@5050'
-    };
-
-    public static readonly GITHUB_USER = {
-        email: 'larryrathod2@gmail.com',
-        password: 'Ganesha@5050'
-    };
-
     public static readonly ASSETS = {
         PROFILE_PIC: 'tests/assets/man.png'
     };

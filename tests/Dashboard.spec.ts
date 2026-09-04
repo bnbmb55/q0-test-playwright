@@ -18,7 +18,8 @@ test.describe('Dashboard Functionality', () => {
 
     test('TC-DB-02: Verify Existing User Dashboard (Overview & Active Models)', async ({ loginPage, dashboardPage }) => {
         await loginPage.navigate();
-        await loginPage.login('patil.tanmay9900@gmail.com', 'Tanmay@123');
+        const credentials = getLoginCredentials('login');
+        await loginPage.login(credentials.email, credentials.password);
         await dashboardPage.verifyDashboardVisible();
 
         await expect(dashboardPage.page.getByText(/Overview|My Models|Recent Trainings/i).first()).toBeVisible({ timeout: 30000 });
@@ -27,7 +28,8 @@ test.describe('Dashboard Functionality', () => {
 
     test('TC-DB-03: Verify sidebar navigation links', async ({ loginPage, dashboardPage }) => {
         await loginPage.navigate();
-        await loginPage.login('patil.tanmay9900@gmail.com', 'Tanmay@123');
+        const credentials = getLoginCredentials('login');
+        await loginPage.login(credentials.email, credentials.password);
         await dashboardPage.verifyDashboardVisible();
 
         await expect(dashboardPage.page.getByText('Marketplace', { exact: true })).toBeVisible({ timeout: 30000 });
@@ -37,7 +39,8 @@ test.describe('Dashboard Functionality', () => {
 
     test('TC-DB-04: Verify User Profile menu options', async ({ loginPage, dashboardPage }) => {
         await loginPage.navigate();
-        await loginPage.login('patil.tanmay9900@gmail.com', 'Tanmay@123');
+        const credentials = getLoginCredentials('login');
+        await loginPage.login(credentials.email, credentials.password);
         await dashboardPage.verifyDashboardVisible();
 
         await dashboardPage.page.getByRole('button', { name: /Tanmay Patil/i }).click();
@@ -53,7 +56,8 @@ test.describe('Dashboard Functionality', () => {
 
     test('TC-DB-06: Verify explicit Sign Out functionality', async ({ loginPage, dashboardPage }) => {
         await loginPage.navigate();
-        await loginPage.login('patil.tanmay9900@gmail.com', 'Tanmay@123');
+        const credentials = getLoginCredentials('login');
+        await loginPage.login(credentials.email, credentials.password);
         await dashboardPage.verifyDashboardVisible();
         await dashboardPage.signOut('Tanmay Patil');
     });

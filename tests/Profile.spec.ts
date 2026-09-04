@@ -1,11 +1,12 @@
 import { test, expect } from '../fixtures/base';
 import { DataGenerator } from '../utils/dataGenerator';
 import { EncryptionAndDecryption } from '../utils/encryption';
-import { AppConfig } from '../utils/config';
 import * as path from 'path';
 
 test.describe('Profile Management Tests', () => {
     test.setTimeout(180000);
+    // This flow registers a user and uploads a real file; do not duplicate it on retry.
+    test.describe.configure({ retries: 0 });
 
     test('TC-PROF-01: Verify Organization User Profile details and Image Upload', async ({ 
         page, 

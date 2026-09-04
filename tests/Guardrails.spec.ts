@@ -1,6 +1,6 @@
 import { expect, test } from '../fixtures/base';
 import { guardrailSmokeScenarios, guardrailVerificationScenarios, GuardrailProfile, GuardrailScenario, GuardrailSuite, scenariosForProfile } from '../data/guardrailScenarios';
-import { textGenerationModels } from '../data/playground/models';
+import { textGenerationModelsForRun } from '../data/playground/models';
 
 type GuardrailEvidence = {
     testCaseId: string;
@@ -37,7 +37,7 @@ test.describe('Guardrails compliance - text generation', () => {
     test.describe.configure({ retries: 0 });
     test.skip(({ browserName }) => browserName !== 'chromium', 'Guardrail compliance is executed in Chromium only.');
 
-    for (const model of textGenerationModels) {
+    for (const model of textGenerationModelsForRun) {
         test.describe(model.displayName, () => {
             test.beforeEach(async ({ authenticate, playgroundPage }) => {
                 await authenticate();
