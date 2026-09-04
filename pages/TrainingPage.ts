@@ -33,7 +33,6 @@ export class TrainingPage {
     readonly gcpSourceBtn: Locator;
     readonly awsSourceBtn: Locator;
     readonly azureSourceBtn: Locator;
-    readonly regionDropdown: Locator;
     readonly secretDropdown: Locator;
     readonly datasetPathInput: Locator;
 
@@ -59,8 +58,6 @@ export class TrainingPage {
         this.createTrainingBtn = page.getByRole('button', { name: 'Create Model Training' });
         this.startTrainingBtn = page.getByRole('button', { name: 'Start Training' });
         this.continueBtn = page.getByRole('button', { name: 'Continue' });
-
-        // Secrets Management
         this.secretsMenu = page.getByRole('button', { name: 'Secrets Secrets' });
         this.createNewSecretBtn = page.getByRole('button', { name: 'Create New Secret' });
         this.secretDisplayNameInput = page.getByRole('textbox', { name: 'Enter a display name for your' });
@@ -88,7 +85,6 @@ export class TrainingPage {
         this.awsSourceBtn = page.getByRole('button', { name: 'AWS' });
         this.azureSourceBtn = page.getByRole('button', { name: 'Azure' });
 
-        this.regionDropdown = page.getByRole('combobox').filter({ hasText: 'Select Region' });
         this.secretDropdown = page.getByRole('combobox').filter({ hasText: 'Select Secret' });
         this.datasetPathInput = page.getByRole('textbox', { name: /path/i }); // Will match gs://bucket/path, s3://..., etc.
 
@@ -205,12 +201,9 @@ export class TrainingPage {
         name: string,
         description: string,
         source: 'AWS' | 'GCP' | 'Azure',
-        region: string,
         secret: string,
-        path: string,
-        secretConfig?: string
-    }): Promise<boolean> {
-        let requiresRestart = false;
+        path: string
+    }): Promise<void> {
         await test.step(`Select or Create Dataset: ${params.name}`, async () => {
             await this.selectDatasetBtn.click();
 
@@ -236,7 +229,9 @@ export class TrainingPage {
                     await this.awsSourceBtn.click();
                 }
 
-                // Dynamic Secret Verification from Training Form Secret Listing
+                // Secrets are provisioned outside the test suite. The UI test only
+                // verifies that the configured connector is available for use.
+                await expect(this.secretDropdown).toBeVisible({ timeout: 15000 });
                 await this.secretDropdown.click();
                 const secretOption = this.page.getByRole('option', { name: new RegExp(params.secret, 'i') }).first();
 
@@ -252,69 +247,17 @@ export class TrainingPage {
                     console.log(`Secret "${params.secret}" found in training form secret listing. Using existing secret.`);
                     await secretOption.click();
                 } else {
-                    console.log(`Secret "${params.secret}" not found in listing! Redirecting to secrets from sidebar...`);
-
-                    await this.secretDropdown.click().catch(() => {});
-                    await this.page.waitForTimeout(500);
-                    await this.page.getByRole('button', { name: 'Back' }).click();
-                    await this.page.waitForTimeout(500);
-                    await this.secretsMenu.click({ force: true });
-                    await this.page.waitForLoadState('networkidle');
-
-                    const createBtn = this.createNewSecretBtn.or(this.createSecretBtn);
-                    await createBtn.first().waitFor({ state: 'visible', timeout: 15000 });
-                    await createBtn.first().click();
-
-                    await this.secretDisplayNameInput.fill(params.secret);
-                    await this.continueBtn.click();
-
-                    // Select Source for Secret (Ensuring form state handles dynamic UI)
-                    await this.page.getByRole('button', { name: 'AWS' }).click().catch(() => { });
-                    if (params.source === 'GCP') {
-                        await this.gcpSourceBtn.click();
-                    } else if (params.source === 'Azure') {
-                        await this.azureSourceBtn.click();
-                    } else if (params.source === 'AWS') {
-                        await this.awsSourceBtn.click();
-                    }
-
-                    const editorFocus = this.page.locator('div').filter({ hasText: /^\{$/ }).first();
-                    await editorFocus.click();
-
-                    const editor = this.page.getByRole('textbox', { name: 'Editor content' });
-                    await editor.press('ControlOrMeta+a');
-                    await editor.press('Backspace');
-
-                    const defaultSecretObj = {
-                        service_account_json: JSON.stringify({
-                            type: "service_account",
-                            project_id: "",
-                            private_key_id: "",
-                            private_key: "",
-                            client_email: "",
-                            client_id: "",
-                            auth_uri: "",
-                            token_uri: "",
-                            auth_provider_x509_cert_url: "",
-                            client_x509_cert_url: "",
-                            universe_domain: ""
-                        })
-                    };
-                    await this.page.keyboard.insertText(params.secretConfig || JSON.stringify(defaultSecretObj, null, 2));
-
-                    await this.createSecretBtn.click();
-
-                    await this.page.waitForTimeout(2000);
-
-                    requiresRestart = true;
-                    return;
+                    throw new Error(`Required ${params.source} secret "${params.secret}" is not available in the training form. Provision it through the platform's Secrets module or CI secret store before running this suite.`);
                 }
 
                 // Fill Path
                 if (params.source === 'Azure') {
                     await this.page.getByRole('textbox', { name: 'https://account.blob.core.' }).fill(params.path);
                 } else {
-                    const pathInput = this.page.getByPlaceholder('gs://bucket/path').or(this.datasetPathInput).first();
+                    const pathInput = this.page.getByPlaceholder('s3://bucket/path')
+                        .or(this.page.getByPlaceholder('gs://bucket/path'))
+                        .or(this.datasetPathInput)
+                        .first();
                     await pathInput.fill(params.path);
                 }
 
@@ -326,7 +269,36 @@ export class TrainingPage {
                 await responsePromise;
             }
         });
-        return requiresRestart;
+    }
+
+    async ensureAwsSecret(secretName: string, credentials: { accessKeyId?: string; secretAccessKey?: string }) {
+        await this.secretsMenu.click();
+        const existingSecret = this.page.getByText(secretName, { exact: true }).first();
+        if (await existingSecret.isVisible({ timeout: 5000 }).catch(() => false)) {
+            console.log(`AWS secret "${secretName}" already exists.`);
+            return;
+        }
+
+        if (!credentials.accessKeyId || !credentials.secretAccessKey) {
+            throw new Error(`AWS secret "${secretName}" is missing. Set Q0_AWS_ACCESS_KEY_ID and Q0_AWS_SECRET_ACCESS_KEY in the execution environment, then rerun.`);
+        }
+
+        await this.createNewSecretBtn.or(this.createSecretBtn).first().click();
+        await this.secretDisplayNameInput.fill(secretName);
+        await this.continueBtn.click();
+        await this.page.getByRole('button', { name: /^AWS$/i }).click();
+
+        const editor = this.page.getByRole('textbox', { name: 'Editor content' });
+        await expect(editor).toBeVisible({ timeout: 15000 });
+        await editor.click();
+        await editor.press('ControlOrMeta+a');
+        await this.page.keyboard.insertText(JSON.stringify({
+            access_key_id: credentials.accessKeyId,
+            secret_access_key: credentials.secretAccessKey
+        }, null, 2));
+
+        await this.createSecretBtn.click();
+        await expect(this.page.getByText(secretName, { exact: true }).first()).toBeVisible({ timeout: 30000 });
     }
 
     async configureEvaluation(autoSplit: boolean = true) {

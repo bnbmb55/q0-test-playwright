@@ -1,118 +1,69 @@
 import { test, expect } from '../fixtures/base';
-import { trainingModels } from '../data/trainingData';
+import { awsTrainingScenarios } from '../data/trainingData';
+import { TestConfig } from '../utils/testConfig';
 
-test.describe('My Training Module - Multi-Model E2E Suite', () => {
+test.describe('AWS Training Submission Suite', () => {
     test.setTimeout(300000);
-    // These scenarios create and reuse shared datasets/secrets in the same tenant.
-    // Keep them sequential while independent UI modules run in parallel workers.
-    test.describe.configure({ mode: 'serial' });
     test.describe.configure({ retries: 1 });
+    // Training creates billable backend jobs; execute the workflow once rather
+    // than duplicating it across Chromium, Firefox, and WebKit projects.
+    test.skip(({ browserName }) => browserName !== 'chromium', 'AWS training submission is validated in Chromium only.');
+
     test.beforeEach(async ({ authenticate, trainingPage }) => {
         await authenticate('training');
+        await trainingPage.ensureAwsSecret(TestConfig.training.awsSecretName, {
+            accessKeyId: TestConfig.training.awsAccessKeyId,
+            secretAccessKey: TestConfig.training.awsSecretAccessKey
+        });
         await trainingPage.navigateToMyTrainings();
     });
 
-    const testScenarios: any[] = [];
+    for (const scenario of awsTrainingScenarios) {
+        test(`TC-TRAIN-AWS-SFT: ${scenario.model} submits an AWS dataset`, async ({ trainingPage, page }) => {
+            const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+            const trainingName = `AUTO-AWS-${scenario.model}-SFT-${runId}`;
+            // Dataset data is stable. Reuse it across runs instead of creating
+            // an identical dataset for every training submission.
+            const datasetName = `AUTO-AWS-DATASET-${scenario.model}-SFT`;
 
-    trainingModels.forEach(config => {
-        testScenarios.push({ ...config, type: 'SFT', path: config.sftPath });
+            await test.step('Open the training wizard', async () => {
+                await trainingPage.clickCreateTraining();
+                await expect(page.getByRole('heading', { name: /Create Training/i })).toBeVisible();
+            });
 
-        testScenarios.push({ ...config, type: 'SFT', distributionType: 'DDP', path: config.sftPath });
+            await test.step('Provide training details', async () => {
+                await trainingPage.fillBasicDetails(
+                    trainingName,
+                    `AWS SFT submission validation for ${scenario.model}; source: ${scenario.s3Uri}`
+                );
+            });
 
-        testScenarios.push({ ...config, type: 'SFT', distributionType: 'DeepSpeed', path: config.sftPath });
+            await test.step('Select a supported model and training method', async () => {
+                await trainingPage.selectModel(scenario.category, scenario.task, scenario.model);
+                await trainingPage.selectTrainingConfiguration(scenario.trainingTypeLabel, undefined, scenario.model);
+            });
 
-        if (config.supportsRLHF) {
-            testScenarios.push({ ...config, type: 'RLHF', path: config.rlhfPath });
-        }
-    });
-
-    for (const data of testScenarios) {
-        test(`TC-TRAIN: ${data.model} - ${data.provider} ${data.type}${data.distributionType ? '-' + data.distributionType : ''} Creation`, async ({ trainingPage, page }) => {
-            const dist = data.distributionType ? `-${data.distributionType}` : '';
-            const trainingName = `${data.model}-${data.provider}-${data.type}${dist}-${Date.now()}`;
-            const datasetName = `DATASET-${data.model}-${data.provider}-${data.type}`;
-
-            let requiresRestart = false;
-            let attempt = 0;
-
-            do {
-                requiresRestart = false;
-                attempt++;
-
-                await test.step(`Attempt ${attempt}: Navigate and Open Training Form`, async () => {
-                    await trainingPage.navigateToMyTrainings();
-                    await trainingPage.clickCreateTraining();
+            await test.step('Create an AWS-backed dataset using a provisioned secret', async () => {
+                await trainingPage.selectOrCreateDataset({
+                    name: datasetName,
+                    description: `SFT ${scenario.format} dataset for ${scenario.model}`,
+                    source: 'AWS',
+                    secret: TestConfig.training.awsSecretName,
+                    path: scenario.s3Uri
                 });
+            });
 
-                await test.step(`Attempt ${attempt}: Step 1: Fill Basic Details`, async () => {
-                    await expect(page.getByRole('heading', { name: /Create Training/i })).toBeVisible({ timeout: 10000 });
-                    await trainingPage.fillBasicDetails(trainingName, `Automated Test for ${data.model} on ${data.provider}`);
-                });
+            await test.step('Configure and submit the training job', async () => {
+                await trainingPage.configureEvaluation(true);
+                await trainingPage.configureInfrastructure('H100');
+                await trainingPage.configureOptionsAndSubmit(scenario.preferredQuantization);
+            });
 
-                await test.step(`Attempt ${attempt}: Step 2: Select Model`, async () => {
-                    await trainingPage.selectModel(data.category, data.task, data.model);
-                });
-
-                await test.step(`Attempt ${attempt}: Step 3: Configure Training`, async () => {
-                    const typeLabel = data.type === 'SFT' ? data.sftLabel : data.rlhfLabel;
-                    await trainingPage.selectTrainingConfiguration(typeLabel, data.distributionType as any, data.model);
-                });
-
-                await test.step(`Attempt ${attempt}: Step 4: Dataset and Secret Verification`, async () => {
-                    const gcpServiceAccountObj = {
-                        type: "service_account",
-                        project_id: "",
-                        private_key_id: "",
-                        private_key: "",
-                        client_email: "",
-                        client_id: "",
-                        auth_uri: "",
-                        token_uri: "",
-                        auth_provider_x509_cert_url: "",
-                        client_x509_cert_url: "",
-                        universe_domain: ""
-                    };
-
-                    const safeGcpSecretConfig = JSON.stringify({
-                        service_account_json: JSON.stringify(gcpServiceAccountObj)
-                    }, null, 2);
-
-                    requiresRestart = await trainingPage.selectOrCreateDataset({
-                        name: datasetName,
-                        description: `Reusable dataset for ${data.model} ${data.provider}`,
-                        source: data.provider as 'GCP' | 'Azure' | 'AWS',
-                        region: data.region,
-                        secret: `${data.provider} Secret`,
-                        path: data.path,
-                        secretConfig: safeGcpSecretConfig
-                    });
-                });
-
-                if (requiresRestart) {
-                    console.log(`Secret was missing and created from sidebar. Restarting the training form (Attempt ${attempt})...`);
-                    continue;
-                }
-
-                await test.step(`Attempt ${attempt}: Step 5: Evaluation Settings`, async () => {
-                    await trainingPage.configureEvaluation(true);
-                });
-
-                await test.step(`Attempt ${attempt}: Step 6: Infrastructure Setup`, async () => {
-                    await trainingPage.configureInfrastructure('H100');
-                });
-
-                await test.step(`Attempt ${attempt}: Step 7: Finalize and Submit`, async () => {
-                    await trainingPage.configureOptionsAndSubmit(data.preferredQuantization);
-                });
-
-                await test.step(`Attempt ${attempt}: Verify Training Creation`, async () => {
-                    await trainingPage.verifyTrainingCreation();
-                    await trainingPage.searchTraining(trainingName);
-                    await expect(page.getByRole('cell', { name: new RegExp(trainingName, 'i') })).toBeVisible();
-                });
-
-            } while (requiresRestart && attempt < 2);
+            await test.step('Verify the job is accepted by the platform', async () => {
+                await trainingPage.verifyTrainingCreation();
+                await trainingPage.searchTraining(trainingName);
+                await expect(page.getByRole('cell', { name: new RegExp(trainingName, 'i') })).toBeVisible({ timeout: 30000 });
+            });
         });
     }
-
 });

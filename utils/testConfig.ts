@@ -4,6 +4,7 @@ type LoginCredentials = {
 };
 
 const readEnv = (name: string, fallback: string): string => process.env[name] ?? fallback;
+const readOptionalEnv = (name: string): string | undefined => process.env[name];
 
 export const TestConfig = {
     baseUrl: readEnv('PLAYWRIGHT_BASE_URL', readEnv('Q0_BASE_URL', 'https://ui-beta.q0.dev')),
@@ -38,6 +39,11 @@ export const TestConfig = {
         interaction: 10000,
         network: 30000,
         suite: 900000
+    },
+    training: {
+        awsSecretName: readEnv('Q0_AWS_SECRET_NAME', 'AWS Secret'),
+        awsAccessKeyId: readOptionalEnv('Q0_AWS_ACCESS_KEY_ID'),
+        awsSecretAccessKey: readOptionalEnv('Q0_AWS_SECRET_ACCESS_KEY')
     },
     prompts: {
         playgroundSuffix: readEnv('Q0_PROMPT_SUFFIX', ''),
