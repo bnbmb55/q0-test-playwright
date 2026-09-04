@@ -12,3 +12,8 @@ temp_node/
 
 # Large local archive
 Q0_Playwright_test.zip
+q0-test-playwright-source-*.zip
+
+# Local command diagnostics
+*-run.stdout.log
+*-run.stderr.log

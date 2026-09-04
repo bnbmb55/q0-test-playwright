@@ -463,8 +463,8 @@ class CustomReporter implements Reporter {
                         : `${data.guardrailSummary.compliant}/${data.guardrailSummary.total} policy decisions matched expectation; ${data.guardrailSummary.nonCompliant} did not.`}
                     <a href="./guardrail-compliance.json" download class="download-link" style="margin-left: 12px;">Download compliance JSON</a>
                 </p>
-                ${guardrailModelRows ? `<h4 style="margin: 20px 0 10px;">Per-model result</h4><div style="overflow-x: auto;"><table><thead><tr><th>Model</th><th>Backend profile</th><th>Executed</th><th>Passed</th><th>Failed</th><th>Status</th></tr></thead><tbody>${guardrailModelRows}</tbody></table></div>` : ''}
-                ${guardrailRows ? `<h4 style="margin: 20px 0 10px;">Policy evidence</h4><div style="overflow-x: auto;"><table><thead><tr><th>Model</th><th>Backend profile</th><th>Case</th><th>Policy</th><th>Expected</th><th>Actual</th><th>HTTP</th><th>Block type</th></tr></thead><tbody>${guardrailRows}</tbody></table></div>` : ''}
+                ${guardrailModelRows ? `<h4 style="margin: 20px 0 10px;">Per-model result</h4><div style="overflow-x: auto;"><table><thead><tr><th>Model</th><th>Expected profile</th><th>Executed</th><th>Passed</th><th>Failed</th><th>Status</th></tr></thead><tbody>${guardrailModelRows}</tbody></table></div>` : ''}
+                ${guardrailRows ? `<h4 style="margin: 20px 0 10px;">Policy evidence</h4><div style="overflow-x: auto;"><table><thead><tr><th>Model</th><th>Expected profile</th><th>Case</th><th>Policy</th><th>Expected</th><th>Actual</th><th>HTTP</th><th>Block type</th></tr></thead><tbody>${guardrailRows}</tbody></table></div>` : ''}
             </div>`;
         const cacheColour = data.cacheSummary.status === 'APPLIED'
             ? 'var(--success)'

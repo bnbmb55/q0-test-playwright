@@ -1,4 +1,5 @@
 export type GuardrailProfile = 'standard' | 'strict';
+export type GuardrailSuite = 'smoke' | 'verification' | 'full';
 export type GuardrailExpectedOutcome = 'allow' | 'block' | 'redact';
 
 export interface GuardrailScenario {
@@ -84,4 +85,20 @@ export function scenariosForProfile(profile: GuardrailProfile): GuardrailScenari
 
 export const guardrailSmokeScenarios = guardrailScenarios.filter((scenario) =>
     scenario.profile === 'standard' && ['GR-ALLOW-01', 'GR-J1', 'GR-V1', 'GR-PI5', 'GR-PI1'].includes(scenario.id)
+);
+
+/** One representative check for every standard-profile policy and boundary. */
+export const guardrailVerificationScenarios = guardrailScenarios.filter((scenario) =>
+    scenario.profile === 'standard' && [
+        'GR-ALLOW-01', // safe traffic is allowed
+        'GR-J1',       // jailbreak / prompt injection
+        'GR-S1',       // system-prompt extraction
+        'GR-H1',       // hate speech
+        'GR-V1',       // violence
+        'GR-X2',       // sexual content involving minors
+        'GR-PI1',      // e-mail anonymization
+        'GR-PI5',      // card-number block
+        'GR-PB1',      // profanity is intentionally allowed in standard
+        'GR-PB2'       // competitor topic is intentionally allowed in standard
+    ].includes(scenario.id)
 );
